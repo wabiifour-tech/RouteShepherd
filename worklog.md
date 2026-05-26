@@ -53,3 +53,32 @@ Stage Summary:
 - Competition Readiness Report saved to /home/z/my-project/download/RouteShepherd_Competition_Readiness_Report_and_Demo_Script.docx
 - Report includes: remaining bugs, known limitations, intentionally deferred features, recommended future enhancements, 3-5 minute demo script, judge talking points
 - Test credentials ready for live demo: coordinator (coordinator@routeshepherd.ng / Shepherd@2026!), driver (testdriver@routeshepherd.ng / PIN: 111111), passenger (passenger@test.com / password123)
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: CRITICAL FIX - Resolve Prisma "The URL must start with the protocol postgresql://" production error
+
+Work Log:
+- Identified ROOT CAUSE: prisma/schema.prisma had `provider = "sqlite"` but Vercel was using Neon PostgreSQL DATABASE_URL
+- Local .env was pointing to SQLite file: `file:/home/z/my-project/db/custom.db`
+- Changed datasource provider from "sqlite" to "postgresql" in prisma/schema.prisma
+- Added `directUrl = env("DIRECT_URL")` for Neon pooled/direct connection support
+- Updated local .env with Neon PostgreSQL connection strings (pooled for queries, direct for migrations)
+- Ran `prisma generate` and `prisma db push` to sync schema
+- Resolved git merge conflicts with remote (which had richer schema with security fields, PWA headers)
+- Merged both versions: kept security fields (loginAttempts, lockedUntil, pinChangeRequired), kept PWA headers, kept serverExternalPackages
+- Added `postinstall: "prisma generate"` to package.json for Vercel build
+- Added `output: "standalone"` and `serverExternalPackages: ['bcryptjs']` to next.config.ts
+- Verified all auth credentials work against Neon PostgreSQL
+- Build compiles successfully
+- Pushed commit b2d85ea to GitHub, triggering Vercel redeployment
+
+Stage Summary:
+- ROOT CAUSE: Schema was configured for SQLite while production needed PostgreSQL
+- FIX: Changed provider to postgresql, added directUrl for Neon pooler support
+- Database verified: 59 users, 50 buses, 17 routes, 18 pickup points, 2 events, 8 notifications, 8 pre-registrations
+- All credentials verified: coordinator/admin/passenger passwords work, drivers have hashed PINs
+- Build passes cleanly
+- Commit pushed: b2d85ea - awaiting Vercel redeployment
+- USER ACTION NEEDED: Verify Vercel environment variables match
