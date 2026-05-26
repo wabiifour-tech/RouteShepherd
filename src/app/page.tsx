@@ -42,11 +42,14 @@ export default function Home() {
       setUser(userData);
       localStorage.setItem('rs_user', JSON.stringify(userData));
 
-      // Only redirect if we're still on the landing page
-      if (currentView === 'landing' || currentView === 'passenger-login' || currentView === 'coordinator-login' || currentView === 'driver-login') {
+      // Only auto-redirect from landing page.
+      // Do NOT auto-redirect from login pages - login components handle their own navigation
+      // (e.g., driver login shows PIN change modal before redirecting to dashboard).
+      // For drivers with pinChangeRequired, the DriverLoginPage handles showing the modal.
+      if (currentView === 'landing') {
         if (role === 'passenger') setCurrentView('passenger');
         else if (role === 'coordinator') setCurrentView('coordinator');
-        else if (role === 'driver') setCurrentView('driver');
+        else if (role === 'driver' && !pinChangeRequired) setCurrentView('driver');
       }
     } else if (!isAuthenticated) {
       // No NextAuth session and no local state - try localStorage
@@ -55,10 +58,12 @@ export default function Home() {
         if (savedUser) {
           const parsed = JSON.parse(savedUser);
           setUser(parsed);
-          // Redirect to appropriate view
-          if (parsed.role === 'passenger') setCurrentView('passenger');
-          else if (parsed.role === 'coordinator') setCurrentView('coordinator');
-          else if (parsed.role === 'driver') setCurrentView('driver');
+          // Only redirect from landing page
+          if (currentView === 'landing') {
+            if (parsed.role === 'passenger') setCurrentView('passenger');
+            else if (parsed.role === 'coordinator') setCurrentView('coordinator');
+            else if (parsed.role === 'driver' && !parsed.pinChangeRequired) setCurrentView('driver');
+          }
         }
       } catch {
         // ignore
