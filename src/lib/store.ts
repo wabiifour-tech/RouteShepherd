@@ -111,6 +111,7 @@ export interface AuthUser {
   provider: string;
   driverPhone?: string | null;
   assignedBuses?: Bus[];
+  pinChangeRequired?: boolean;
 }
 
 interface AppState {

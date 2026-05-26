@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
-  reactStrictMode: false,
+  reactStrictMode: true,
   serverExternalPackages: ['bcryptjs'],
   images: {
     remotePatterns: [

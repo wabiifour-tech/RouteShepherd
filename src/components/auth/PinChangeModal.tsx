@@ -11,10 +11,9 @@ import { toast } from 'sonner';
 interface PinChangeModalProps {
   email: string;
   onPinChanged: () => void;
-  onSkip?: () => void;
 }
 
-export default function PinChangeModal({ email, onPinChanged, onSkip }: PinChangeModalProps) {
+export default function PinChangeModal({ email, onPinChanged }: PinChangeModalProps) {
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -153,15 +152,11 @@ export default function PinChangeModal({ email, onPinChanged, onSkip }: PinChang
             {submitting ? 'Changing PIN...' : 'Change PIN & Continue'}
           </Button>
 
-          {onSkip && (
-            <button
-              onClick={onSkip}
-              className="w-full text-xs text-muted-foreground hover:text-foreground transition-colors text-center"
-              type="button"
-            >
-              Skip for now (you will be prompted again)
-            </button>
-          )}
+          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 p-2 border border-red-200 dark:border-red-800">
+            <p className="text-xs text-red-600 dark:text-red-400 text-center">
+              You must change your PIN to continue. This is required for security.
+            </p>
+          </div>
         </CardContent>
       </Card>
     </div>

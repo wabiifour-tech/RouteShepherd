@@ -9,6 +9,7 @@ import DriverInterface from '@/components/DriverInterface';
 import PassengerLoginPage from '@/components/auth/PassengerLoginPage';
 import CoordinatorLoginPage from '@/components/auth/CoordinatorLoginPage';
 import DriverLoginPage from '@/components/auth/DriverLoginPage';
+import AuthGuard from '@/components/auth/AuthGuard';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
@@ -27,6 +28,7 @@ export default function Home() {
       const role = (session.user as Record<string, unknown>).role as string || 'passenger';
       const provider = (session.user as Record<string, unknown>).provider as string || 'google';
       const id = (session.user as Record<string, unknown>).id as string || '';
+      const pinChangeRequired = (session.user as Record<string, unknown>).pinChangeRequired as boolean || false;
       const userData = {
         id,
         email: session.user.email || '',
@@ -35,6 +37,7 @@ export default function Home() {
         role,
         phone: null,
         provider,
+        pinChangeRequired,
       };
       setUser(userData);
       localStorage.setItem('rs_user', JSON.stringify(userData));
@@ -90,14 +93,23 @@ export default function Home() {
       case 'driver-login':
         return <DriverLoginPage />;
       case 'passenger':
-        if (!isAuthenticated) return <PassengerLoginPage />;
-        return <PassengerPortal />;
+        return (
+          <AuthGuard allowedRoles={['passenger']}>
+            <PassengerPortal />
+          </AuthGuard>
+        );
       case 'coordinator':
-        if (!isAuthenticated || user?.role !== 'coordinator') return <CoordinatorLoginPage />;
-        return <CoordinatorDashboard />;
+        return (
+          <AuthGuard allowedRoles={['coordinator']}>
+            <CoordinatorDashboard />
+          </AuthGuard>
+        );
       case 'driver':
-        if (!isAuthenticated || user?.role !== 'driver') return <DriverLoginPage />;
-        return <DriverInterface />;
+        return (
+          <AuthGuard allowedRoles={['driver']}>
+            <DriverInterface />
+          </AuthGuard>
+        );
       default:
         return <LandingView />;
     }

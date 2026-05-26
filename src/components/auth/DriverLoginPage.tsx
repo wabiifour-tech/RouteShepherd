@@ -109,10 +109,7 @@ export default function DriverLoginPage() {
     setCurrentView('driver');
   };
 
-  const handlePinChangeSkip = () => {
-    setShowPinChange(false);
-    setCurrentView('driver');
-  };
+
 
   const handlePinChange = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 6);
@@ -125,7 +122,6 @@ export default function DriverLoginPage() {
         <PinChangeModal
           email={email}
           onPinChanged={handlePinChanged}
-          onSkip={handlePinChangeSkip}
         />
       )}
       <motion.div
