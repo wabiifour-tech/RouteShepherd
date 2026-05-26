@@ -1,14 +1,4 @@
 import type { NextConfig } from "next";
-const withPWA = require("@ducanh2912/next-pwa").default({
-  dest: "public",
-  disable: process.env.NODE_ENV === "development",
-  register: true,
-  skipWaiting: true,
-  customWorkerDir: "worker",
-  workboxOptions: {
-    disableDevLogs: true,
-  },
-});
 
 const nextConfig: NextConfig = {
   typescript: {
@@ -16,6 +6,8 @@ const nextConfig: NextConfig = {
   },
   reactStrictMode: true,
   serverExternalPackages: ['bcryptjs'],
+  // Turbopack config for Next.js 16 compatibility
+  turbopack: {},
   images: {
     remotePatterns: [
       {
@@ -24,11 +16,11 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-       hostname: 'avatars.githubusercontent.com',
+        hostname: 'avatars.githubusercontent.com',
       },
     ],
   },
-  // PWA headers for manifest and service worker
+  // PWA and security headers
   async headers() {
     return [
       {
@@ -57,4 +49,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default withPWA(nextConfig);
+export default nextConfig;

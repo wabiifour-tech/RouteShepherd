@@ -10,6 +10,7 @@ import PassengerLoginPage from '@/components/auth/PassengerLoginPage';
 import CoordinatorLoginPage from '@/components/auth/CoordinatorLoginPage';
 import DriverLoginPage from '@/components/auth/DriverLoginPage';
 import AuthGuard from '@/components/auth/AuthGuard';
+import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
@@ -137,6 +138,7 @@ export default function Home() {
           </motion.div>
         </AnimatePresence>
       </main>
+      <PWAInstallPrompt />
     </div>
   );
 }
