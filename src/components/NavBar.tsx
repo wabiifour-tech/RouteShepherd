@@ -62,8 +62,8 @@ export default function NavBar() {
           onClick={() => setCurrentView('landing')}
           className="flex items-center gap-2 transition-opacity hover:opacity-80"
         >
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#1B5E20]">
-            <Bus className="h-5 w-5 text-[#F9A825]" />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg overflow-hidden">
+            <img src="/logo-icon.png" alt="RouteShepherd" className="h-9 w-9 rounded-lg object-cover" />
           </div>
           <div className="flex flex-col">
             <span className="text-lg font-bold leading-tight text-[#1B5E20] dark:text-[#4CAF50]">

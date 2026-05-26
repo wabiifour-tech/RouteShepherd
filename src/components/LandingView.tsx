@@ -403,9 +403,7 @@ export default function LandingView() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <div className="flex items-center gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md bg-[#1B5E20]">
-                <Bus className="h-4 w-4 text-[#F9A825]" />
-              </div>
+              <img src="/logo-icon.png" alt="RouteShepherd" className="h-7 w-7 rounded-md" />
               <span className="font-bold text-[#1B5E20] dark:text-[#4CAF50]">RouteShepherd</span>
             </div>
             <p className="text-sm text-muted-foreground">
