@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Event {
+  id                 String   @id @default(cuid())
+  name               String
+  description        String?
+  date               DateTime
+  endDate            DateTime?
+  status             String   @default("upcoming") // upcoming, active, completed, cancelled
+  expectedAttendance Int?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  routes             Route[]
+  buses              Bus[]
+}
+
+model PickupPoint {
+  id          String   @id @default(cuid())
+  name        String
+  state       String
+  latitude    Float
+  longitude   Float
+  address     String?
+  capacity    Int?
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  routesFrom  Route[]  @relation("RouteFrom")
+  routesTo    Route[]  @relation("RouteTo")
+  queueEntries       QueueEntry[]
+  demandForecasts    DemandForecast[]
+  preRegistrations   PreRegistration[]
+}
+
+model Route {
+  id             String      @id @default(cuid())
+  name           String
+  fromPointId    String
+  toPointId      String
+  distanceKm     Float?
+  estimatedMin   Int?
+  status         String      @default("active") // active, suspended, completed
+  eventId        String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  fromPoint      PickupPoint @relation("RouteFrom", fields: [fromPointId], references: [id])
+  toPoint        PickupPoint @relation("RouteTo", fields: [toPointId], references: [id])
+  event          Event?      @relation(fields: [eventId], references: [id])
+  buses          Bus[]
+}
+
+model Bus {
+  id           String    @id @default(cuid())
+  plateNumber  String
+  capacity     Int
+  currentLoad  Int       @default(0)
+  status       String    @default("available") // available, in-transit, loading, maintenance
+  driverName   String?
+  driverPhone  String?
+  routeId      String?
+  eventId      String?
+  latitude     Float?
+  longitude    Float?
+  lastUpdated  DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  route        Route?    @relation(fields: [routeId], references: [id])
+  event        Event?    @relation(fields: [eventId], references: [id])
+}
+
+model QueueEntry {
+  id             String      @id @default(cuid())
+  pickupPointId  String
+  estimatedWait  Int?        // in minutes
+  queueLength    Int?
+  recordedAt     DateTime    @default(now())
+  pickupPoint    PickupPoint @relation(fields: [pickupPointId], references: [id])
+}
+
+model DemandForecast {
+  id             String      @id @default(cuid())
+  pickupPointId  String
+  timeSlot       String
+  predictedDemand Int
+  confidence     Float?      // 0.0 to 1.0
+  createdAt      DateTime    @default(now())
+  pickupPoint    PickupPoint @relation(fields: [pickupPointId], references: [id])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  title     String
+  message   String
+  type      String   @default("info") // info, warning, success
+  target    String   @default("all")  // all, coordinator, passenger, driver
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model PreRegistration {
+  id             String      @id @default(cuid())
+  fullName       String
+  phone          String
+  pickupPointId  String
+  preferredTime  String?
+  passengers     Int         @default(1)
+  status         String      @default("pending") // pending, confirmed, cancelled
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  pickupPoint    PickupPoint @relation(fields: [pickupPointId], references: [id])
+}
