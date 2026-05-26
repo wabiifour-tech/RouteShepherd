@@ -75,6 +75,7 @@ export interface NotificationItem {
   message: string;
   type: string;
   target: string;
+  userId: string | null;
   read: boolean;
   createdAt: string;
 }
@@ -87,8 +88,11 @@ export interface PreRegistration {
   preferredTime: string | null;
   passengers: number;
   status: string;
+  assignedBusId: string | null;
+  userId: string | null;
   createdAt: string;
   pickupPoint?: PickupPoint;
+  assignedBus?: Bus;
 }
 
 export interface EventItem {

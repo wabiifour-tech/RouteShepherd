@@ -35,6 +35,8 @@ model User {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   assignedBuses Bus[]    // Buses where this user is the driver (inverse of Bus.driverId)
+  notifications Notification[] // Notifications for this user
+  preRegistrations PreRegistration[] // Pre-registrations by this user
 
   @@index([role])
   @@index([email])
@@ -106,6 +108,7 @@ model Bus {
   updatedAt    DateTime  @updatedAt
   route        Route?    @relation(fields: [routeId], references: [id])
   event        Event?    @relation(fields: [eventId], references: [id])
+  preRegistrations PreRegistration[] // Pre-registrations assigned to this bus
 }
 
 model QueueEntry {
@@ -133,8 +136,15 @@ model Notification {
   message   String
   type      String   @default("info") // info, warning, success
   target    String   @default("all")  // all, coordinator, passenger, driver
+  userId    String?  // null = broadcast to target group, specific user ID = user-specific
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([target])
+  @@index([read])
 }
 
 model PreRegistration {
@@ -145,7 +155,14 @@ model PreRegistration {
   preferredTime  String?
   passengers     Int         @default(1)
   status         String      @default("pending") // pending, confirmed, cancelled
+  assignedBusId  String?     // Bus assigned to this pre-registration
+  userId         String?     // Link to User if they have an account
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
   pickupPoint    PickupPoint @relation(fields: [pickupPointId], references: [id])
+  assignedBus    Bus?        @relation(fields: [assignedBusId], references: [id])
+  user           User?       @relation(fields: [userId], references: [id])
+
+  @@index([assignedBusId])
+  @@index([userId])
 }

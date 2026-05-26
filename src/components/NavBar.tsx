@@ -1,8 +1,8 @@
 'use client';
 
 import { useAppStore, type ViewType } from '@/lib/store';
-import { Bus, Map, LayoutDashboard, Users, Menu, X, Moon, Sun, LogOut } from 'lucide-react';
-import { useState, useSyncExternalStore } from 'react';
+import { Bus, Map, LayoutDashboard, Users, Menu, X, Moon, Sun, LogOut, Bell } from 'lucide-react';
+import { useState, useSyncExternalStore, useEffect } from 'react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,8 +27,40 @@ const roleBadgeColors: Record<string, string> = {
 export default function NavBar() {
   const { currentView, setCurrentView, user, isAuthenticated, setUser } = useAppStore();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const mounted = useMounted();
   const { theme, setTheme } = useTheme();
+
+  // Fetch unread notification count
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchCount = async () => {
+      if (!isAuthenticated || !user) {
+        if (!cancelled) setUnreadCount(0);
+        return;
+      }
+      try {
+        const res = await fetch('/api/notifications', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (res.ok && !cancelled) {
+          const data = await res.json();
+          setUnreadCount(data.unreadCount || 0);
+        }
+      } catch {
+        // Silent fail
+      }
+    };
+
+    fetchCount();
+    const interval = setInterval(fetchCount, 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [isAuthenticated, user]);
 
   // Build nav items based on auth state and role
   const navItems: { view: ViewType; label: string; icon: React.ReactNode }[] = [
@@ -51,7 +83,6 @@ export default function NavBar() {
     setUser(null);
     localStorage.removeItem('rs_user');
     setCurrentView('landing');
-    // Properly sign out from NextAuth server-side
     try {
       await signOut({ redirect: false });
     } catch {
@@ -103,6 +134,26 @@ export default function NavBar() {
 
         {/* Right side */}
         <div className="flex items-center gap-2">
+          {/* Notification Bell */}
+          {mounted && isAuthenticated && user && unreadCount > 0 && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="relative h-9 w-9"
+              onClick={() => {
+                // Navigate to the relevant view that shows notifications
+                if (user.role === 'passenger') setCurrentView('passenger');
+                else if (user.role === 'coordinator') setCurrentView('coordinator');
+                else if (user.role === 'driver') setCurrentView('driver');
+              }}
+            >
+              <Bell className="h-4 w-4" />
+              <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            </Button>
+          )}
+
           {mounted && isAuthenticated && user && (
             <div className="hidden sm:flex items-center gap-2">
               <Badge className={cn('text-xs', roleBadgeColors[user.role] || 'bg-gray-500 text-white')}>
@@ -165,6 +216,11 @@ export default function NavBar() {
                 <span className="text-sm text-muted-foreground truncate">
                   {user.name || user.email}
                 </span>
+                {unreadCount > 0 && (
+                  <Badge className="bg-red-500 text-white text-[10px] ml-auto">
+                    {unreadCount} new
+                  </Badge>
+                )}
               </div>
             )}
             {navItems.map((item) => (

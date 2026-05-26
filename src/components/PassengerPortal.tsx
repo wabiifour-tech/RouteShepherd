@@ -1,6 +1,6 @@
 'use client';
 
-import { useAppStore, type PickupPoint, type Route, type Bus, type QueueEntry as QueueEntryType, type EventItem } from '@/lib/store';
+import { useAppStore, type PickupPoint, type Route, type Bus, type NotificationItem } from '@/lib/store';
 import { useEffect, useState, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +10,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { MapPin, Bus as BusIcon, Clock, Users, RouteIcon, ChevronRight, Phone, CheckCircle, Loader2, ArrowRight } from 'lucide-react';
+import { MapPin, Bus as BusIcon, Clock, Users, RouteIcon, ChevronRight, Phone, CheckCircle, Loader2, ArrowRight, Bell, AlertTriangle, Eye, Navigation } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import dynamic from 'next/dynamic';
 import { toast } from 'sonner';
@@ -59,7 +59,8 @@ export default function PassengerPortal() {
   const [routes, setRoutes] = useState<Route[]>([]);
   const [buses, setBuses] = useState<Bus[]>([]);
   const [queueStatus, setQueueStatus] = useState<Array<{ pickupPointId: string; name: string; state: string; estimatedWait: number | null; queueLength: number | null }>>([]);
-  const [events, setEvents] = useState<EventItem[]>([]);
+  const [events, setEvents] = useState<Array<{ id: string; name: string; description: string | null; date: string; endDate: string | null; status: string; expectedAttendance: number | null }>>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
   // Tab state
   const [activeTab, setActiveTab] = useState('map');
@@ -74,7 +75,10 @@ export default function PassengerPortal() {
   const [formSuccess, setFormSuccess] = useState(false);
 
   // My trips
-  const [myTrips, setMyTrips] = useState<Array<{ id: string; fullName: string; pickupPoint: PickupPoint; preferredTime: string | null; passengers: number; status: string }>>([]);
+  const [myTrips, setMyTrips] = useState<Array<{ id: string; fullName: string; pickupPoint: PickupPoint; preferredTime: string | null; passengers: number; status: string; assignedBusId: string | null; assignedBus?: Bus }>>([]);
+
+  // Assigned bus for current user
+  const [assignedBus, setAssignedBus] = useState<Bus | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -101,11 +105,68 @@ export default function PassengerPortal() {
     }
   }, []);
 
+  // Load notifications for this user
+  const loadNotifications = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/notifications?target=passenger&userId=${user.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        setNotifications(data);
+      }
+    } catch {
+      // Silent fail
+    }
+  }, [user]);
+
+  // Load user's pre-registrations / trips
+  const loadMyTrips = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch(`/api/preregister?userId=${user.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        // Enrich with pickup point data
+        const enriched = data.map((trip: { id: string; fullName: string; pickupPointId: string; preferredTime: string | null; passengers: number; status: string; assignedBusId: string | null }) => {
+          const pp = pickupPoints.find((p) => p.id === trip.pickupPointId);
+          const bus = buses.find((b) => b.id === trip.assignedBusId);
+          return {
+            ...trip,
+            pickupPoint: pp || { id: trip.pickupPointId, name: 'Unknown', state: '', latitude: 0, longitude: 0, address: null, capacity: null, active: false },
+            assignedBus: bus,
+          };
+        });
+        setMyTrips(enriched);
+
+        // Find the first assigned bus for live tracking
+        const assigned = enriched.find((t: { assignedBusId: string | null; status: string }) => t.assignedBusId && t.status === 'confirmed');
+        if (assigned) {
+          const bus = buses.find((b) => b.id === assigned.assignedBusId);
+          setAssignedBus(bus || null);
+        }
+      }
+    } catch {
+      // Silent fail
+    }
+  }, [user, pickupPoints, buses]);
+
   useEffect(() => {
     loadData();
     const interval = setInterval(loadData, 10000); // Refresh every 10s
     return () => clearInterval(interval);
   }, [loadData]);
+
+  useEffect(() => {
+    loadNotifications();
+    const interval = setInterval(loadNotifications, 15000);
+    return () => clearInterval(interval);
+  }, [loadNotifications]);
+
+  useEffect(() => {
+    if (pickupPoints.length > 0 && buses.length > 0) {
+      loadMyTrips();
+    }
+  }, [loadMyTrips, pickupPoints.length, buses.length]);
 
   // Group pickup points by state
   const pointsByState = pickupPoints.reduce<Record<string, PickupPoint[]>>((acc, pp) => {
@@ -134,6 +195,7 @@ export default function PassengerPortal() {
           pickupPointId: formPickupPoint,
           preferredTime: formTime || undefined,
           passengers: formPassengers,
+          userId: user?.id || undefined,
         }),
       });
       if (!res.ok) {
@@ -150,6 +212,7 @@ export default function PassengerPortal() {
           preferredTime: data.preferredTime,
           passengers: data.passengers,
           status: data.status,
+          assignedBusId: data.assignedBusId || null,
         }]);
       }
       setFormSuccess(true);
@@ -169,8 +232,39 @@ export default function PassengerPortal() {
     }
   };
 
+  // Mark notification as read
+  const handleMarkNotifRead = async (notifId: string) => {
+    try {
+      await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: notifId }),
+      });
+      loadNotifications();
+    } catch {
+      // Silent fail
+    }
+  };
+
+  // Mark all notifications as read
+  const handleMarkAllRead = async () => {
+    if (!user) return;
+    try {
+      await fetch('/api/notifications', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ allForUser: user.id }),
+      });
+      loadNotifications();
+      toast.success('All notifications marked as read');
+    } catch {
+      // Silent fail
+    }
+  };
+
   const activeEvent = events.find((e) => e.status === 'upcoming' || e.status === 'active');
   const redemptionCity = { lat: 6.7765, lng: 3.4310 };
+  const unreadNotifs = notifications.filter((n) => !n.read);
 
   return (
     <div className="min-h-screen bg-background">
@@ -190,13 +284,88 @@ export default function PassengerPortal() {
           </p>
         </motion.div>
 
+        {/* Assigned Bus Alert */}
+        {assignedBus && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-6"
+          >
+            <Card className="border-[#1B5E20]/30 bg-[#1B5E20]/5">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#1B5E20]">
+                    <BusIcon className="h-6 w-6 text-[#F9A825]" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-[#1B5E20] text-sm">Your Bus: {assignedBus.plateNumber}</p>
+                    <p className="text-xs text-muted-foreground">
+                      Status: <span className={`font-medium ${assignedBus.status === 'in-transit' ? 'text-blue-600' : assignedBus.status === 'loading' ? 'text-yellow-600' : 'text-green-600'}`}>
+                        {statusLabels[assignedBus.status]}
+                      </span>
+                      {assignedBus.route && ` • ${assignedBus.route.name}`}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {assignedBus.currentLoad}/{assignedBus.capacity} passengers
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    className="bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90"
+                    onClick={() => setActiveTab('tracking')}
+                  >
+                    <Navigation className="mr-1 h-3 w-3" />
+                    Track
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
+        {/* Unread Notifications Banner */}
+        {unreadNotifs.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="mb-4"
+          >
+            <Card className="border-[#F9A825]/30 bg-[#F9A825]/5">
+              <CardContent className="p-3">
+                <div className="flex items-center gap-2">
+                  <Bell className="h-4 w-4 text-[#F9A825]" />
+                  <span className="text-sm font-medium">
+                    {unreadNotifs.length} unread notification{unreadNotifs.length > 1 ? 's' : ''}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="ml-auto text-xs text-[#1B5E20] h-7"
+                    onClick={() => setActiveTab('notifications')}
+                  >
+                    View All
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
+
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="map" className="text-xs sm:text-sm">Live Map</TabsTrigger>
-            <TabsTrigger value="routes" className="text-xs sm:text-sm">Routes</TabsTrigger>
-            <TabsTrigger value="register" className="text-xs sm:text-sm">Register</TabsTrigger>
-            <TabsTrigger value="tracking" className="text-xs sm:text-sm">Tracking</TabsTrigger>
-            <TabsTrigger value="trips" className="text-xs sm:text-sm">My Trips</TabsTrigger>
+          <TabsList className="flex w-full overflow-x-auto gap-1 p-1">
+            <TabsTrigger value="map" className="text-xs whitespace-nowrap flex-shrink-0">Live Map</TabsTrigger>
+            <TabsTrigger value="routes" className="text-xs whitespace-nowrap flex-shrink-0">Routes</TabsTrigger>
+            <TabsTrigger value="register" className="text-xs whitespace-nowrap flex-shrink-0">Register</TabsTrigger>
+            <TabsTrigger value="tracking" className="text-xs whitespace-nowrap flex-shrink-0">Tracking</TabsTrigger>
+            <TabsTrigger value="trips" className="text-xs whitespace-nowrap flex-shrink-0">My Trips</TabsTrigger>
+            <TabsTrigger value="notifications" className="text-xs whitespace-nowrap flex-shrink-0 relative">
+              Alerts
+              {unreadNotifs.length > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[9px] font-bold text-white">
+                  {unreadNotifs.length}
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
 
           {/* LIVE MAP TAB */}
@@ -211,11 +380,12 @@ export default function PassengerPortal() {
               </CardHeader>
               <CardContent className="p-0">
                 <div className="h-[500px] w-full" id="passenger-map">
-                  <MapComponent
+                  <PassengerMapComponent
                     pickupPoints={pickupPoints}
                     routes={routes}
                     buses={buses}
                     redemptionCity={redemptionCity}
+                    assignedBus={assignedBus}
                   />
                 </div>
               </CardContent>
@@ -323,7 +493,7 @@ export default function PassengerPortal() {
                     >
                       <CheckCircle className="mx-auto mb-4 h-16 w-16 text-green-500" />
                       <h3 className="mb-2 text-xl font-bold">Registration Successful!</h3>
-                      <p className="text-muted-foreground">You will receive a confirmation shortly.</p>
+                      <p className="text-muted-foreground">You will receive a confirmation and bus assignment shortly.</p>
                     </motion.div>
                   ) : (
                     <div className="space-y-4">
@@ -430,15 +600,97 @@ export default function PassengerPortal() {
                 Live Bus Tracking
                 <Badge variant="secondary" className="animate-pulse">Live</Badge>
               </h3>
+
+              {/* Assigned Bus Featured Card */}
+              {assignedBus && (
+                <Card className="border-[#1B5E20]/30 shadow-lg">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1B5E20]">
+                        <Navigation className="h-4 w-4 text-[#F9A825]" />
+                      </div>
+                      Your Assigned Bus
+                      <Badge className="ml-auto bg-[#1B5E20] text-white">Assigned</Badge>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2">
+                          <div className={`h-3 w-3 rounded-full ${statusColors[assignedBus.status]} animate-pulse`} />
+                          <span className="font-bold text-lg">{assignedBus.plateNumber}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {statusLabels[assignedBus.status]}
+                          </Badge>
+                        </div>
+                        {assignedBus.route && (
+                          <div className="rounded-lg bg-muted/50 p-3">
+                            <div className="flex items-center gap-1 text-sm font-medium">
+                              <MapPin className="h-3 w-3 text-[#1B5E20]" />
+                              {assignedBus.route.name}
+                            </div>
+                            {assignedBus.route.distanceKm && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {assignedBus.route.distanceKm}km • ~{assignedBus.route.estimatedMin}min
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground">Capacity</span>
+                            <span className="font-medium">{assignedBus.currentLoad}/{assignedBus.capacity}</span>
+                          </div>
+                          <Progress
+                            value={(assignedBus.currentLoad / assignedBus.capacity) * 100}
+                            className="h-3"
+                          />
+                        </div>
+                        {assignedBus.driver && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <Users className="h-3 w-3" />
+                            Driver: {assignedBus.driver.name}
+                            {assignedBus.driver.driverPhone && (
+                              <span className="ml-1">• {assignedBus.driver.driverPhone}</span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        {assignedBus.latitude && assignedBus.longitude ? (
+                          <>
+                            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3">
+                              <p className="text-xs font-medium text-blue-700 dark:text-blue-400 mb-1">Live Position</p>
+                              <p className="font-mono text-sm">
+                                {assignedBus.latitude.toFixed(6)}, {assignedBus.longitude.toFixed(6)}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground mt-1">
+                                Updated: {new Date(assignedBus.lastUpdated).toLocaleTimeString()}
+                              </p>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="rounded-lg bg-muted/50 p-3 text-center">
+                            <p className="text-xs text-muted-foreground">No GPS data available yet</p>
+                            <p className="text-[10px] text-muted-foreground mt-1">The driver has not started tracking</p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* All Active Buses */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {buses
                   .filter((b) => b.status !== 'maintenance' && b.route)
                   .map((bus) => (
-                    <Card key={bus.id} className="shadow-md">
+                    <Card key={bus.id} className={`shadow-md ${assignedBus?.id === bus.id ? 'border-[#1B5E20]/40 ring-1 ring-[#1B5E20]/20' : ''}`}>
                       <CardContent className="p-4">
                         <div className="mb-3 flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <div className={`h-3 w-3 rounded-full ${statusColors[bus.status]} animate-pulse`} />
+                            <div className={`h-3 w-3 rounded-full ${statusColors[bus.status]} ${bus.status === 'in-transit' ? 'animate-pulse' : ''}`} />
                             <span className="font-bold text-sm">{bus.plateNumber}</span>
                           </div>
                           <Badge variant="outline" className="text-xs">
@@ -514,18 +766,99 @@ export default function PassengerPortal() {
                           <div className="flex items-center justify-between">
                             <h4 className="font-bold text-sm">{trip.pickupPoint.name}</h4>
                             <Badge
-                              variant={trip.status === 'confirmed' ? 'default' : 'secondary'}
+                              variant={trip.status === 'confirmed' ? 'default' : trip.status === 'cancelled' ? 'destructive' : 'secondary'}
                               className={trip.status === 'confirmed' ? 'bg-green-500' : ''}
                             >
                               {trip.status}
                             </Badge>
                           </div>
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs text-muted-foreground mt-1">
                             {trip.passengers} passenger{trip.passengers > 1 ? 's' : ''} • {trip.preferredTime || 'No time preference'}
                           </p>
                           <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
                             <MapPin className="h-3 w-3" />
                             {trip.pickupPoint.state} State
+                          </div>
+                          {trip.assignedBus && (
+                            <div className="mt-2 rounded-lg bg-[#1B5E20]/5 p-2">
+                              <div className="flex items-center gap-2">
+                                <BusIcon className="h-3 w-3 text-[#1B5E20]" />
+                                <span className="text-xs font-medium text-[#1B5E20]">
+                                  Assigned: {trip.assignedBus.plateNumber}
+                                </span>
+                                <Badge variant="outline" className="text-[10px] ml-auto">
+                                  {statusLabels[trip.assignedBus.status]}
+                                </Badge>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* NOTIFICATIONS TAB */}
+          <TabsContent value="notifications">
+            <div className="mx-auto max-w-lg">
+              <Card className="shadow-lg">
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="flex items-center gap-2">
+                      <Bell className="h-5 w-5 text-[#1B5E20]" />
+                      Notifications
+                    </CardTitle>
+                    {unreadNotifs.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-xs text-[#1B5E20] h-7"
+                        onClick={handleMarkAllRead}
+                      >
+                        <Eye className="mr-1 h-3 w-3" />
+                        Mark all read
+                      </Button>
+                    )}
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  {notifications.length === 0 ? (
+                    <div className="py-8 text-center">
+                      <Bell className="mx-auto mb-3 h-12 w-12 text-muted-foreground/30" />
+                      <p className="text-muted-foreground text-sm">No notifications yet</p>
+                    </div>
+                  ) : (
+                    <div className="max-h-96 space-y-2 overflow-y-auto">
+                      {notifications.map((notif) => (
+                        <div
+                          key={notif.id}
+                          className={`rounded-lg border p-3 transition-colors ${!notif.read ? 'bg-[#1B5E20]/5 border-[#1B5E20]/20' : ''}`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            {notif.type === 'warning' && <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />}
+                            {notif.type === 'success' && <CheckCircle className="h-4 w-4 text-green-500 shrink-0" />}
+                            {notif.type === 'info' && <Bell className="h-4 w-4 text-blue-500 shrink-0" />}
+                            <span className="font-medium text-sm">{notif.title}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground">{notif.message}</p>
+                          <div className="mt-2 flex items-center justify-between">
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(notif.createdAt).toLocaleString()}
+                            </span>
+                            {!notif.read && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 text-[10px] text-[#1B5E20]"
+                                onClick={() => handleMarkNotifRead(notif.id)}
+                              >
+                                <Eye className="mr-1 h-3 w-3" />
+                                Read
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -542,16 +875,18 @@ export default function PassengerPortal() {
 }
 
 // Map sub-component
-function MapComponent({
+function PassengerMapComponent({
   pickupPoints,
   routes,
   buses,
   redemptionCity,
+  assignedBus,
 }: {
   pickupPoints: PickupPoint[];
   routes: Route[];
   buses: Bus[];
   redemptionCity: { lat: number; lng: number };
+  assignedBus: Bus | null;
 }) {
   const [mapReady, setMapReady] = useState(false);
   const [leaflet, setLeaflet] = useState<typeof import('leaflet') | null>(null);
@@ -586,6 +921,13 @@ function MapComponent({
     className: '',
     iconSize: [28, 28],
     iconAnchor: [14, 14],
+  });
+
+  const assignedBusIcon = leaflet.divIcon({
+    html: `<div style="background:#F9A825;width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:3px solid #1B5E20;box-shadow:0 2px 10px rgba(0,0,0,0.5)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1B5E20" stroke-width="2"><rect x="3" y="3" width="18" height="14" rx="2"/><line x1="3" y1="17" x2="21" y2="17"/><line x1="7" y1="20" x2="7" y2="17"/><line x1="17" y1="20" x2="17" y2="17"/></svg></div>`,
+    className: '',
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
   });
 
   const pickupIcon = leaflet.divIcon({
@@ -658,9 +1000,33 @@ function MapComponent({
         );
       })}
 
-      {/* Bus markers */}
+      {/* Assigned bus marker (highlighted) */}
+      {assignedBus && assignedBus.latitude && assignedBus.longitude && (
+        <Marker
+          position={[assignedBus.latitude, assignedBus.longitude]}
+          icon={assignedBusIcon}
+        >
+          <Popup>
+            <div>
+              <strong className="text-[#1B5E20]">Your Bus: {assignedBus.plateNumber}</strong>
+              <br />
+              <span className="text-xs capitalize">{assignedBus.status}</span>
+              <br />
+              <span className="text-xs">{assignedBus.currentLoad}/{assignedBus.capacity} passengers</span>
+              {assignedBus.driver && (
+                <>
+                  <br />
+                  <span className="text-xs">Driver: {assignedBus.driver.name}</span>
+                </>
+              )}
+            </div>
+          </Popup>
+        </Marker>
+      )}
+
+      {/* Other bus markers */}
       {buses
-        .filter((b) => b.latitude && b.longitude && b.status !== 'maintenance')
+        .filter((b) => b.latitude && b.longitude && b.status !== 'maintenance' && b.id !== assignedBus?.id)
         .map((bus) => (
           <Marker key={bus.id} position={[bus.latitude!, bus.longitude!]} icon={busIcon}>
             <Popup>
