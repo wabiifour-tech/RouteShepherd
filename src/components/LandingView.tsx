@@ -87,12 +87,17 @@ export default function LandingView() {
             transition={{ duration: 0.8 }}
             className="max-w-2xl"
           >
-            <Badge className="mb-4 border-[#F9A825]/30 bg-[#F9A825]/10 text-[#F9A825] hover:bg-[#F9A825]/20">
-              Kingdom Hack 3.0
-            </Badge>
-            <h1 className="mb-4 text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
-              Route<span className="text-[#F9A825]">Shepherd</span>
-            </h1>
+            <div className="mb-6 flex items-center gap-4">
+              <img src="/logo-3d-premium.png" alt="RouteShepherd" className="h-20 w-20 rounded-2xl shadow-2xl ring-2 ring-[#F9A825]/30" />
+              <div>
+                <Badge className="mb-2 border-[#F9A825]/30 bg-[#F9A825]/10 text-[#F9A825] hover:bg-[#F9A825]/20">
+                  Kingdom Hack 3.0
+                </Badge>
+                <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
+                  Route<span className="text-[#F9A825]">Shepherd</span>
+                </h1>
+              </div>
+            </div>
             <p className="mb-8 text-xl text-white/80 sm:text-2xl">
               Intelligent Transit Coordination for Redemption City
             </p>
@@ -100,7 +105,7 @@ export default function LandingView() {
               Coordinating 300+ buses across 17 pickup points nationwide for RCCG events.
               Eliminating chaos, reducing wait times from 6 hours to under 30 minutes.
             </p>
-            <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
               <Button
                 size="lg"
                 onClick={goToPassenger}
@@ -117,6 +122,15 @@ export default function LandingView() {
               >
                 <BarChart3 className="mr-2 h-5 w-5" />
                 Coordinator Login
+              </Button>
+              <Button
+                size="lg"
+                variant="outline"
+                onClick={() => setCurrentView('driver-login')}
+                className="border-[#F9A825]/50 text-[#F9A825] hover:bg-[#F9A825]/10 font-semibold text-base px-8"
+              >
+                <Bus className="mr-2 h-5 w-5" />
+                Driver Login
               </Button>
             </div>
           </motion.div>

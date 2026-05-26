@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { ThemeProvider } from "next-themes";
+import SessionProvider from "@/components/auth/SessionProvider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -21,6 +22,28 @@ export const metadata: Metadata = {
   icons: {
     icon: "/logo.png",
   },
+  openGraph: {
+    title: "RouteShepherd - Intelligent Transit Coordination",
+    description: "AI-powered transit coordination for Redemption City events. 300+ buses, 17 pickup points, 5M+ attendees.",
+    url: "https://routeshepherd.vercel.app",
+    siteName: "RouteShepherd",
+    images: [
+      {
+        url: "/logo-premium.png",
+        width: 1200,
+        height: 630,
+        alt: "RouteShepherd - Intelligent Transit Coordination",
+      },
+    ],
+    locale: "en_NG",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "RouteShepherd - Intelligent Transit Coordination",
+    description: "AI-powered transit coordination for Redemption City events.",
+    images: ["/logo-premium.png"],
+  },
 };
 
 export default function RootLayout({
@@ -33,15 +56,17 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
-        <ThemeProvider
-          attribute="class"
-          defaultTheme="light"
-          enableSystem
-          disableTransitionOnChange
-        >
-          {children}
-          <Toaster />
-        </ThemeProvider>
+        <SessionProvider>
+          <ThemeProvider
+            attribute="class"
+            defaultTheme="light"
+            enableSystem
+            disableTransitionOnChange
+          >
+            {children}
+            <Toaster />
+          </ThemeProvider>
+        </SessionProvider>
       </body>
     </html>
   );

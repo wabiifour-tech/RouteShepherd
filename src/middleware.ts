@@ -38,36 +38,38 @@ function isPublicPostRoute(pathname: string): boolean {
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Only apply to API routes
-  if (!pathname.startsWith('/api/')) {
+  // Apply to API routes
+  if (pathname.startsWith('/api/')) {
+    // Allow all auth routes (login, signup, NextAuth handlers)
+    if (isPublicRoute(pathname)) {
+      return NextResponse.next();
+    }
+
+    // Allow GET on public read routes
+    if (isPublicReadRoute(pathname) && request.method === 'GET') {
+      return NextResponse.next();
+    }
+
+    // Allow POST on public post routes (e.g., preregister for passengers)
+    if (isPublicPostRoute(pathname) && request.method === 'POST') {
+      return NextResponse.next();
+    }
+
+    // For all other API routes, require authentication
+    const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
+
+    if (!token) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
     return NextResponse.next();
   }
 
-  // Allow all auth routes (login, signup, NextAuth handlers)
-  if (isPublicRoute(pathname)) {
-    return NextResponse.next();
-  }
-
-  // Allow GET on public read routes
-  if (isPublicReadRoute(pathname) && request.method === 'GET') {
-    return NextResponse.next();
-  }
-
-  // Allow POST on public post routes (e.g., preregister for passengers)
-  if (isPublicPostRoute(pathname) && request.method === 'POST') {
-    return NextResponse.next();
-  }
-
-  // For all other API routes, require authentication
-  const token = await getToken({ req: request, secret: process.env.NEXTAUTH_SECRET });
-
-  if (!token) {
-    return NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
-    );
-  }
-
+  // For page routes, we rely on client-side auth checks in the SPA
+  // since this is a single-page app with Zustand state management
   return NextResponse.next();
 }
 
