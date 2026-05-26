@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
-export type ViewType = 'landing' | 'passenger' | 'coordinator' | 'driver';
+export type ViewType = 'landing' | 'passenger' | 'coordinator' | 'driver'
+  | 'passenger-login' | 'coordinator-login' | 'driver-login';
 
 export interface PickupPoint {
   id: string;
@@ -27,20 +28,27 @@ export interface Route {
   _count?: { buses: number };
 }
 
+export interface DriverInfo {
+  id: string;
+  name: string | null;
+  email: string;
+  driverPhone: string | null;
+}
+
 export interface Bus {
   id: string;
   plateNumber: string;
   capacity: number;
   currentLoad: number;
   status: string;
-  driverName: string | null;
-  driverPhone: string | null;
+  driverId: string | null;
   routeId: string | null;
   eventId: string | null;
   latitude: number | null;
   longitude: number | null;
   lastUpdated: string;
   route?: Route;
+  driver?: DriverInfo;
 }
 
 export interface QueueEntry {
@@ -93,10 +101,27 @@ export interface EventItem {
   expectedAttendance: number | null;
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string | null;
+  image: string | null;
+  role: string; // passenger, coordinator, driver
+  phone: string | null;
+  provider: string;
+  driverPhone?: string | null;
+  assignedBuses?: Bus[];
+}
+
 interface AppState {
   // Navigation
   currentView: ViewType;
   setCurrentView: (view: ViewType) => void;
+
+  // Auth
+  user: AuthUser | null;
+  setUser: (user: AuthUser | null) => void;
+  isAuthenticated: boolean;
 
   // Selected items
   selectedBus: Bus | null;
@@ -137,6 +162,11 @@ export const useAppStore = create<AppState>((set) => ({
   // Navigation
   currentView: 'landing',
   setCurrentView: (view) => set({ currentView: view }),
+
+  // Auth
+  user: null,
+  setUser: (user) => set({ user, isAuthenticated: !!user }),
+  isAuthenticated: false,
 
   // Selected items
   selectedBus: null,

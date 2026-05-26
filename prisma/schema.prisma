@@ -7,6 +7,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String?
+  image         String?
+  role          String   @default("passenger") // passenger, coordinator, driver
+  phone         String?
+  provider      String   @default("google") // google, credentials, email-only
+
+  // Coordinator-specific
+  passwordHash  String?  // only for coordinators
+
+  // Driver-specific
+  driverPhone   String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  assignedBuses Bus[]    // Buses where this user is the driver (inverse of Bus.driverId)
+}
+
 model Event {
   id                 String   @id @default(cuid())
   name               String
@@ -62,8 +82,8 @@ model Bus {
   capacity     Int
   currentLoad  Int       @default(0)
   status       String    @default("available") // available, in-transit, loading, maintenance
-  driverName   String?
-  driverPhone  String?
+  driverId     String?   // FK to User (driver)
+  driver       User?     @relation(fields: [driverId], references: [id])
   routeId      String?
   eventId      String?
   latitude     Float?

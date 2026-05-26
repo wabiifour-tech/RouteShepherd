@@ -10,13 +10,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import { Textarea } from '@/components/ui/textarea';
-import { Bus, MapPin, Clock, Users, BarChart3, Bell, Send, Loader2, AlertTriangle, CheckCircle, Route as RouteIcon, Activity, RefreshCw } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { Bus, MapPin, Clock, Users, BarChart3, Bell, Send, Loader2, AlertTriangle, CheckCircle, Route as RouteIcon, Activity, RefreshCw, Plus, Trash2, Edit, UserPlus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, Cell,
 } from 'recharts';
+import dynamic from 'next/dynamic';
 import type { Bus as BusType, Route as RouteType, PickupPoint, DemandForecast, NotificationItem } from '@/lib/store';
+import 'leaflet/dist/leaflet.css';
+
+const MapContainer = dynamic(() => import('react-leaflet').then((mod) => mod.MapContainer), { ssr: false });
+const TileLayer = dynamic(() => import('react-leaflet').then((mod) => mod.TileLayer), { ssr: false });
+const Marker = dynamic(() => import('react-leaflet').then((mod) => mod.Marker), { ssr: false });
+const Popup = dynamic(() => import('react-leaflet').then((mod) => mod.Popup), { ssr: false });
+const Polyline = dynamic(() => import('react-leaflet').then((mod) => mod.Polyline), { ssr: false });
 
 const statusColors: Record<string, string> = {
   available: 'bg-green-500',
@@ -32,12 +41,22 @@ const statusTextColors: Record<string, string> = {
   maintenance: 'text-red-700 bg-red-100 dark:text-red-400 dark:bg-red-900/30',
 };
 
+interface DriverUser {
+  id: string;
+  email: string;
+  name: string | null;
+  driverPhone: string | null;
+  role: string;
+  assignedBuses: BusType[];
+}
+
 export default function CoordinatorDashboard() {
   const [buses, setBuses] = useState<BusType[]>([]);
   const [routes, setRoutes] = useState<RouteType[]>([]);
   const [pickupPoints, setPickupPoints] = useState<PickupPoint[]>([]);
   const [demandForecasts, setDemandForecasts] = useState<DemandForecast[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [drivers, setDrivers] = useState<DriverUser[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Dispatch form state
@@ -55,14 +74,27 @@ export default function CoordinatorDashboard() {
   // Selected forecast pickup point
   const [forecastPickupPoint, setForecastPickupPoint] = useState('all');
 
+  // Driver management
+  const [driverDialogOpen, setDriverDialogOpen] = useState(false);
+  const [editDriverId, setEditDriverId] = useState<string | null>(null);
+  const [driverName, setDriverName] = useState('');
+  const [driverEmail, setDriverEmail] = useState('');
+  const [driverPhone, setDriverPhone] = useState('');
+  const [driverBusId, setDriverBusId] = useState('');
+  const [savingDriver, setSavingDriver] = useState(false);
+
+  // Active tab
+  const [activeTab, setActiveTab] = useState('demand');
+
   const loadData = useCallback(async () => {
     try {
-      const [busesRes, routesRes, ppRes, forecastsRes, notifsRes] = await Promise.all([
+      const [busesRes, routesRes, ppRes, forecastsRes, notifsRes, driversRes] = await Promise.all([
         fetch('/api/buses'),
         fetch('/api/routes'),
         fetch('/api/pickup-points'),
         fetch('/api/demand-forecasts'),
         fetch('/api/notifications'),
+        fetch('/api/drivers'),
       ]);
       setBuses(await busesRes.json());
       setRoutes(await routesRes.json());
@@ -70,6 +102,7 @@ export default function CoordinatorDashboard() {
       setPickupPoints(ppData.filter((pp: PickupPoint) => pp.name !== 'Redemption City'));
       setDemandForecasts(await forecastsRes.json());
       setNotifications(await notifsRes.json());
+      setDrivers(await driversRes.json());
     } catch (e) {
       console.error('Failed to load dashboard data', e);
     } finally {
@@ -117,6 +150,9 @@ export default function CoordinatorDashboard() {
 
   // Available buses for dispatch
   const availableForDispatch = buses.filter((b) => b.status === 'available');
+
+  // Buses without drivers
+  const unassignedBuses = buses.filter((b) => !b.driverId);
 
   // Dispatch handler
   const handleDispatch = async () => {
@@ -173,6 +209,89 @@ export default function CoordinatorDashboard() {
       toast.error('Failed to send alert');
     } finally {
       setSendingAlert(false);
+    }
+  };
+
+  // Driver management handlers
+  const openAddDriver = () => {
+    setEditDriverId(null);
+    setDriverName('');
+    setDriverEmail('');
+    setDriverPhone('');
+    setDriverBusId('');
+    setDriverDialogOpen(true);
+  };
+
+  const openEditDriver = (driver: DriverUser) => {
+    setEditDriverId(driver.id);
+    setDriverName(driver.name || '');
+    setDriverEmail(driver.email);
+    setDriverPhone(driver.driverPhone || '');
+    setDriverBusId(driver.assignedBuses?.[0]?.id || '');
+    setDriverDialogOpen(true);
+  };
+
+  const handleSaveDriver = async () => {
+    if (!driverName || !driverEmail || !driverPhone) {
+      toast.error('Please fill in all driver details');
+      return;
+    }
+    setSavingDriver(true);
+    try {
+      if (editDriverId) {
+        // Update existing driver
+        const res = await fetch('/api/drivers', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: editDriverId,
+            name: driverName,
+            email: driverEmail,
+            phone: driverPhone,
+            busId: driverBusId || null,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to update driver');
+        }
+        toast.success('Driver updated successfully!');
+      } else {
+        // Add new driver
+        const res = await fetch('/api/drivers', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: driverName,
+            email: driverEmail,
+            phone: driverPhone,
+            busId: driverBusId || undefined,
+          }),
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.error || 'Failed to add driver');
+        }
+        toast.success('Driver added successfully!');
+      }
+      setDriverDialogOpen(false);
+      loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to save driver');
+    } finally {
+      setSavingDriver(false);
+    }
+  };
+
+  const handleDeleteDriver = async (driverId: string) => {
+    if (!confirm('Are you sure you want to remove this driver?')) return;
+    try {
+      const res = await fetch(`/api/drivers?id=${driverId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete driver');
+      toast.success('Driver removed');
+      loadData();
+    } catch {
+      toast.error('Failed to remove driver');
     }
   };
 
@@ -233,11 +352,12 @@ export default function CoordinatorDashboard() {
           ))}
         </div>
 
-        <Tabs defaultValue="demand" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-6">
             <TabsTrigger value="demand" className="text-xs sm:text-sm">Demand</TabsTrigger>
             <TabsTrigger value="fleet" className="text-xs sm:text-sm">Fleet</TabsTrigger>
             <TabsTrigger value="dispatch" className="text-xs sm:text-sm">Dispatch</TabsTrigger>
+            <TabsTrigger value="drivers" className="text-xs sm:text-sm">Drivers</TabsTrigger>
             <TabsTrigger value="routes" className="text-xs sm:text-sm">Routes</TabsTrigger>
             <TabsTrigger value="alerts" className="text-xs sm:text-sm">Alerts</TabsTrigger>
           </TabsList>
@@ -329,8 +449,8 @@ export default function CoordinatorDashboard() {
                         </Badge>
                       </div>
                       <p className="mb-1 font-bold text-xs">{bus.plateNumber}</p>
-                      {bus.driverName && (
-                        <p className="text-[10px] text-muted-foreground truncate">{bus.driverName}</p>
+                      {bus.driver && (
+                        <p className="text-[10px] text-muted-foreground truncate">{bus.driver.name}</p>
                       )}
                       <div className="mt-2">
                         <div className="flex items-center justify-between text-[10px]">
@@ -371,7 +491,7 @@ export default function CoordinatorDashboard() {
                       <SelectContent className="max-h-64">
                         {availableForDispatch.map((bus) => (
                           <SelectItem key={bus.id} value={bus.id}>
-                            {bus.plateNumber} — {bus.driverName || 'No driver'} (Cap: {bus.capacity})
+                            {bus.plateNumber} — {bus.driver?.name || 'No driver'} (Cap: {bus.capacity})
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -439,6 +559,145 @@ export default function CoordinatorDashboard() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          {/* DRIVERS TAB */}
+          <TabsContent value="drivers">
+            <Card className="shadow-lg">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-[#1B5E20]" />
+                    Driver Management
+                  </CardTitle>
+                  <Dialog open={driverDialogOpen} onOpenChange={setDriverDialogOpen}>
+                    <DialogTrigger asChild>
+                      <Button className="bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90" onClick={openAddDriver}>
+                        <UserPlus className="mr-2 h-4 w-4" />
+                        Add Driver
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>{editDriverId ? 'Edit Driver' : 'Add New Driver'}</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div>
+                          <Label>Driver Name *</Label>
+                          <Input
+                            placeholder="Full name"
+                            value={driverName}
+                            onChange={(e) => setDriverName(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label>Driver Email * <span className="text-muted-foreground font-normal">(This is their login)</span></Label>
+                          <Input
+                            type="email"
+                            placeholder="driver@example.com"
+                            value={driverEmail}
+                            onChange={(e) => setDriverEmail(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label>Phone Number *</Label>
+                          <Input
+                            placeholder="+234-XXX-XXX-XXXX"
+                            value={driverPhone}
+                            onChange={(e) => setDriverPhone(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <Label>Assign to Bus</Label>
+                          <Select value={driverBusId} onValueChange={setDriverBusId}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a bus (optional)" />
+                            </SelectTrigger>
+                            <SelectContent className="max-h-64">
+                              <SelectItem value="__none__">No bus assignment</SelectItem>
+                              {unassignedBuses.map((bus) => (
+                                <SelectItem key={bus.id} value={bus.id}>
+                                  {bus.plateNumber} (Cap: {bus.capacity})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <DialogClose asChild>
+                          <Button variant="outline">Cancel</Button>
+                        </DialogClose>
+                        <Button
+                          className="bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90"
+                          onClick={handleSaveDriver}
+                          disabled={savingDriver}
+                        >
+                          {savingDriver && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          {editDriverId ? 'Save Changes' : 'Add Driver'}
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {drivers.length === 0 ? (
+                  <div className="py-8 text-center">
+                    <Users className="mx-auto mb-3 h-12 w-12 text-muted-foreground/50" />
+                    <p className="text-muted-foreground">No drivers added yet.</p>
+                    <Button variant="outline" className="mt-3" onClick={openAddDriver}>
+                      <UserPlus className="mr-2 h-4 w-4" />
+                      Add Your First Driver
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="max-h-[500px] overflow-y-auto space-y-3">
+                    {drivers.map((driver) => (
+                      <div key={driver.id} className="flex items-center gap-3 rounded-lg border p-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#1B5E20]/10">
+                          <Users className="h-5 w-5 text-[#1B5E20]" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm">{driver.name || 'Unnamed'}</p>
+                          <p className="text-xs text-muted-foreground">{driver.email}</p>
+                          {driver.driverPhone && (
+                            <p className="text-xs text-muted-foreground">{driver.driverPhone}</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          {driver.assignedBuses && driver.assignedBuses.length > 0 ? (
+                            <Badge className="bg-[#1B5E20] text-white text-xs">
+                              {driver.assignedBuses[0].plateNumber}
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs">Unassigned</Badge>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => openEditDriver(driver)}
+                          >
+                            <Edit className="h-3 w-3" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteDriver(driver.id)}
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* ROUTES TAB */}

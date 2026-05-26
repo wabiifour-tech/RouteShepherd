@@ -1,10 +1,11 @@
 'use client';
 
 import { useAppStore, type ViewType } from '@/lib/store';
-import { Bus, Map, LayoutDashboard, Users, Menu, X, Moon, Sun } from 'lucide-react';
+import { Bus, Map, LayoutDashboard, Users, Menu, X, Moon, Sun, LogOut } from 'lucide-react';
 import { useState, useSyncExternalStore } from 'react';
 import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 const emptySubscribe = () => () => {};
@@ -16,18 +17,42 @@ function useMounted() {
   );
 }
 
-const navItems: { view: ViewType; label: string; icon: React.ReactNode }[] = [
-  { view: 'landing', label: 'Home', icon: <Bus className="h-4 w-4" /> },
-  { view: 'passenger', label: 'Passenger', icon: <Users className="h-4 w-4" /> },
-  { view: 'coordinator', label: 'Coordinator', icon: <LayoutDashboard className="h-4 w-4" /> },
-  { view: 'driver', label: 'Driver', icon: <Map className="h-4 w-4" /> },
-];
+const roleBadgeColors: Record<string, string> = {
+  passenger: 'bg-[#1B5E20] text-white',
+  coordinator: 'bg-[#F9A825] text-[#1B5E20]',
+  driver: 'bg-blue-600 text-white',
+};
 
 export default function NavBar() {
-  const { currentView, setCurrentView } = useAppStore();
+  const { currentView, setCurrentView, user, isAuthenticated, setUser } = useAppStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const mounted = useMounted();
   const { theme, setTheme } = useTheme();
+
+  // Build nav items based on auth state and role
+  const navItems: { view: ViewType; label: string; icon: React.ReactNode }[] = [
+    { view: 'landing', label: 'Home', icon: <Bus className="h-4 w-4" /> },
+  ];
+
+  if (isAuthenticated && user) {
+    if (user.role === 'passenger') {
+      navItems.push({ view: 'passenger', label: 'Passenger', icon: <Users className="h-4 w-4" /> });
+    }
+    if (user.role === 'coordinator') {
+      navItems.push({ view: 'coordinator', label: 'Dashboard', icon: <LayoutDashboard className="h-4 w-4" /> });
+    }
+    if (user.role === 'driver') {
+      navItems.push({ view: 'driver', label: 'Driver', icon: <Map className="h-4 w-4" /> });
+    }
+  }
+
+  const handleLogout = () => {
+    setUser(null);
+    localStorage.removeItem('rs_user');
+    setCurrentView('landing');
+    // Also sign out from NextAuth if applicable
+    fetch('/api/auth/signout', { method: 'POST' }).catch(() => {});
+  };
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-xl supports-[backdrop-filter]:bg-background/60">
@@ -73,6 +98,17 @@ export default function NavBar() {
 
         {/* Right side */}
         <div className="flex items-center gap-2">
+          {mounted && isAuthenticated && user && (
+            <div className="hidden sm:flex items-center gap-2">
+              <Badge className={cn('text-xs', roleBadgeColors[user.role] || 'bg-gray-500 text-white')}>
+                {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+              </Badge>
+              <span className="text-sm text-muted-foreground max-w-[120px] truncate">
+                {user.name || user.email}
+              </span>
+            </div>
+          )}
+
           {mounted && (
             <Button
               variant="ghost"
@@ -85,6 +121,18 @@ export default function NavBar() {
               ) : (
                 <Moon className="h-4 w-4" />
               )}
+            </Button>
+          )}
+
+          {isAuthenticated && (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={handleLogout}
+              className="h-9 w-9 text-muted-foreground hover:text-destructive"
+              title="Sign Out"
+            >
+              <LogOut className="h-4 w-4" />
             </Button>
           )}
 
@@ -104,6 +152,16 @@ export default function NavBar() {
       {mobileOpen && (
         <div className="border-t border-border/40 bg-background/95 backdrop-blur-xl md:hidden">
           <div className="flex flex-col gap-1 p-3">
+            {isAuthenticated && user && (
+              <div className="flex items-center gap-2 px-3 py-2 mb-2 border-b">
+                <Badge className={cn('text-xs', roleBadgeColors[user.role] || 'bg-gray-500 text-white')}>
+                  {user.role.charAt(0).toUpperCase() + user.role.slice(1)}
+                </Badge>
+                <span className="text-sm text-muted-foreground truncate">
+                  {user.name || user.email}
+                </span>
+              </div>
+            )}
             {navItems.map((item) => (
               <Button
                 key={item.view}
@@ -124,6 +182,20 @@ export default function NavBar() {
                 {item.label}
               </Button>
             ))}
+            {isAuthenticated && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  handleLogout();
+                  setMobileOpen(false);
+                }}
+                className="justify-start gap-2 text-destructive hover:text-destructive"
+              >
+                <LogOut className="h-4 w-4" />
+                Sign Out
+              </Button>
+            )}
           </div>
         </div>
       )}

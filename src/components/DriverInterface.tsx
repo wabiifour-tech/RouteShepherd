@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useAppStore } from '@/lib/store';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Bus, MapPin, Clock, Users, PlayCircle, Navigation, CheckCircle2, Wrench, Loader2, Bell, Plus, Minus, Route } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
@@ -19,26 +19,42 @@ const statusActions: Record<string, { label: string; icon: React.ReactNode; next
 };
 
 export default function DriverInterface() {
+  const { user } = useAppStore();
   const [buses, setBuses] = useState<BusType[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [selectedBusId, setSelectedBusId] = useState('');
   const [updating, setUpdating] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [gpsTracking, setGpsTracking] = useState(false);
+  const gpsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const watchIdRef = useRef<number | null>(null);
 
   const loadData = useCallback(async () => {
     try {
+      // If driver is logged in, only load their assigned buses
+      let busesUrl = '/api/buses';
+      if (user?.role === 'driver' && user?.assignedBuses && user.assignedBuses.length > 0) {
+        busesUrl = `/api/buses?driverId=${user.id}`;
+      }
+
       const [busesRes, notifsRes] = await Promise.all([
-        fetch('/api/buses'),
+        fetch(busesUrl),
         fetch('/api/notifications'),
       ]);
-      setBuses(await busesRes.json());
+      const busesData = await busesRes.json();
+      setBuses(busesData);
       setNotifications((await notifsRes.json()).filter((n: NotificationItem) => n.target === 'driver' || n.target === 'all'));
+
+      // Auto-select bus for logged-in drivers
+      if (user?.role === 'driver' && busesData.length > 0 && !selectedBusId) {
+        setSelectedBusId(busesData[0].id);
+      }
     } catch (e) {
       console.error('Failed to load driver data', e);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.id, user?.role, user?.assignedBuses, selectedBusId]);
 
   useEffect(() => {
     loadData();
@@ -47,6 +63,102 @@ export default function DriverInterface() {
   }, [loadData]);
 
   const selectedBus = buses.find((b) => b.id === selectedBusId);
+
+  // GPS Auto-Tracking
+  const startGpsTracking = useCallback(() => {
+    if (!selectedBusId) return;
+
+    if (!navigator.geolocation) {
+      toast.error('Geolocation is not supported by your browser');
+      return;
+    }
+
+    setGpsTracking(true);
+    toast.success('GPS tracking started. Your location will update every 5 seconds.');
+
+    // Use watchPosition for continuous tracking
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      async (position) => {
+        try {
+          await fetch('/api/driver-location', {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              busId: selectedBusId,
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            }),
+          });
+        } catch {
+          // Silently fail GPS updates
+        }
+      },
+      (error) => {
+        console.error('GPS error:', error);
+        if (error.code === error.PERMISSION_DENIED) {
+          toast.error('GPS permission denied. Please enable location access.');
+          stopGpsTracking();
+        }
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 }
+    );
+
+    // Also update every 5 seconds as backup
+    gpsIntervalRef.current = setInterval(async () => {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            await fetch('/api/driver-location', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                busId: selectedBusId,
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              }),
+            });
+          } catch {
+            // Silently fail
+          }
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 }
+      );
+    }, 5000);
+  }, [selectedBusId]);
+
+  const stopGpsTracking = useCallback(() => {
+    setGpsTracking(false);
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (gpsIntervalRef.current) {
+      clearInterval(gpsIntervalRef.current);
+      gpsIntervalRef.current = null;
+    }
+    toast.info('GPS tracking stopped');
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+      if (gpsIntervalRef.current) {
+        clearInterval(gpsIntervalRef.current);
+      }
+    };
+  }, []);
+
+  // Stop GPS if bus changes
+  useEffect(() => {
+    if (gpsTracking) {
+      stopGpsTracking();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedBusId]);
 
   const updateBusStatus = async (newStatus: string) => {
     if (!selectedBusId) return;
@@ -89,25 +201,81 @@ export default function DriverInterface() {
     }
   };
 
-  const updateLocation = async () => {
+  const updateLocationManual = async () => {
     if (!selectedBus) return;
-    // Simulate GPS update with slight random movement
-    const newLat = (selectedBus.latitude || 6.5) + (Math.random() - 0.5) * 0.005;
-    const newLng = (selectedBus.longitude || 3.4) + (Math.random() - 0.5) * 0.005;
-    setUpdating(true);
-    try {
-      const res = await fetch(`/api/buses/${selectedBusId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ latitude: newLat, longitude: newLng }),
-      });
-      if (!res.ok) throw new Error('Update failed');
-      toast.success('Location updated');
-      loadData();
-    } catch {
-      toast.error('Failed to update location');
-    } finally {
-      setUpdating(false);
+
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          setUpdating(true);
+          try {
+            const res = await fetch('/api/driver-location', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                busId: selectedBusId,
+                latitude: position.coords.latitude,
+                longitude: position.coords.longitude,
+              }),
+            });
+            if (!res.ok) throw new Error('Update failed');
+            toast.success('Location updated from GPS');
+            loadData();
+          } catch {
+            toast.error('Failed to update location');
+          } finally {
+            setUpdating(false);
+          }
+        },
+        async () => {
+          // Fallback: simulate GPS update with slight random movement
+          const newLat = (selectedBus.latitude || 6.5) + (Math.random() - 0.5) * 0.005;
+          const newLng = (selectedBus.longitude || 3.4) + (Math.random() - 0.5) * 0.005;
+          setUpdating(true);
+          try {
+            const res = await fetch('/api/driver-location', {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                busId: selectedBusId,
+                latitude: newLat,
+                longitude: newLng,
+              }),
+            });
+            if (!res.ok) throw new Error('Update failed');
+            toast.success('Location updated (simulated)');
+            loadData();
+          } catch {
+            toast.error('Failed to update location');
+          } finally {
+            setUpdating(false);
+          }
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
+    } else {
+      // No geolocation - simulate
+      const newLat = (selectedBus.latitude || 6.5) + (Math.random() - 0.5) * 0.005;
+      const newLng = (selectedBus.longitude || 3.4) + (Math.random() - 0.5) * 0.005;
+      setUpdating(true);
+      try {
+        const res = await fetch('/api/driver-location', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            busId: selectedBusId,
+            latitude: newLat,
+            longitude: newLng,
+          }),
+        });
+        if (!res.ok) throw new Error('Update failed');
+        toast.success('Location updated (simulated)');
+        loadData();
+      } catch {
+        toast.error('Failed to update location');
+      } finally {
+        setUpdating(false);
+      }
     }
   };
 
@@ -150,7 +318,10 @@ export default function DriverInterface() {
           <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
             Driver <span className="text-[#1B5E20]">Interface</span>
           </h1>
-          <p className="text-muted-foreground">Manage your bus, passengers, and route</p>
+          <p className="text-muted-foreground">
+            Manage your bus, passengers, and route
+            {user && <span className="ml-2 text-[#1B5E20] font-medium">• Welcome, {user.name || user.email}</span>}
+          </p>
         </motion.div>
 
         {/* Bus Selection */}
@@ -158,18 +329,18 @@ export default function DriverInterface() {
           <CardContent className="p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <div className="flex-1">
-                <Select value={selectedBusId} onValueChange={setSelectedBusId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select your bus" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-64">
-                    {buses.map((bus) => (
-                      <SelectItem key={bus.id} value={bus.id}>
-                        {bus.plateNumber} — {bus.driverName || 'Unassigned'} ({bus.status})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <select
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={selectedBusId}
+                  onChange={(e) => setSelectedBusId(e.target.value)}
+                >
+                  <option value="">Select your bus</option>
+                  {buses.map((bus) => (
+                    <option key={bus.id} value={bus.id}>
+                      {bus.plateNumber} — {bus.driver?.name || 'Unassigned'} ({bus.status})
+                    </option>
+                  ))}
+                </select>
               </div>
               {selectedBus && (
                 <Badge
@@ -326,12 +497,12 @@ export default function DriverInterface() {
                       <p className="text-xs text-muted-foreground">Bus Plate Number</p>
                       <p className="text-lg font-bold text-[#1B5E20]">{selectedBus.plateNumber}</p>
                     </div>
-                    {selectedBus.driverName && (
+                    {selectedBus.driver && (
                       <div className="mt-2">
                         <p className="text-xs text-muted-foreground">Driver</p>
-                        <p className="font-medium text-sm">{selectedBus.driverName}</p>
-                        {selectedBus.driverPhone && (
-                          <p className="text-xs text-muted-foreground">{selectedBus.driverPhone}</p>
+                        <p className="font-medium text-sm">{selectedBus.driver.name}</p>
+                        {selectedBus.driver.driverPhone && (
+                          <p className="text-xs text-muted-foreground">{selectedBus.driver.driverPhone}</p>
                         )}
                       </div>
                     )}
@@ -342,42 +513,74 @@ export default function DriverInterface() {
               {/* GPS Update */}
               <Card className="shadow-lg">
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Navigation className="h-5 w-5 text-[#1B5E20]" />
-                    GPS Location
+                  <CardTitle className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Navigation className="h-5 w-5 text-[#1B5E20]" />
+                      GPS Location
+                    </div>
+                    {gpsTracking && (
+                      <Badge className="bg-green-500 text-white animate-pulse">Tracking</Badge>
+                    )}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      {selectedBus.latitude && selectedBus.longitude ? (
-                        <div className="space-y-1">
-                          <p className="font-mono text-sm">
-                            <span className="text-muted-foreground">Lat:</span> {selectedBus.latitude.toFixed(6)}
-                          </p>
-                          <p className="font-mono text-sm">
-                            <span className="text-muted-foreground">Lng:</span> {selectedBus.longitude.toFixed(6)}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            Last updated: {new Date(selectedBus.lastUpdated).toLocaleTimeString()}
-                          </p>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-muted-foreground">No location data</p>
-                      )}
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        {selectedBus.latitude && selectedBus.longitude ? (
+                          <div className="space-y-1">
+                            <p className="font-mono text-sm">
+                              <span className="text-muted-foreground">Lat:</span> {selectedBus.latitude.toFixed(6)}
+                            </p>
+                            <p className="font-mono text-sm">
+                              <span className="text-muted-foreground">Lng:</span> {selectedBus.longitude.toFixed(6)}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              Last updated: {new Date(selectedBus.lastUpdated).toLocaleTimeString()}
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">No location data</p>
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={updateLocationManual}
+                          disabled={updating || gpsTracking}
+                          className="bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90"
+                        >
+                          {updating ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Navigation className="mr-2 h-4 w-4" />
+                          )}
+                          Update Once
+                        </Button>
+                        {!gpsTracking ? (
+                          <Button
+                            onClick={startGpsTracking}
+                            className="bg-blue-600 text-white hover:bg-blue-700"
+                          >
+                            <Navigation className="mr-2 h-4 w-4" />
+                            Auto-Track
+                          </Button>
+                        ) : (
+                          <Button
+                            onClick={stopGpsTracking}
+                            variant="destructive"
+                          >
+                            Stop Tracking
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <Button
-                      onClick={updateLocation}
-                      disabled={updating}
-                      className="bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90"
-                    >
-                      {updating ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Navigation className="mr-2 h-4 w-4" />
-                      )}
-                      Update Location
-                    </Button>
+                    {gpsTracking && (
+                      <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3">
+                        <p className="text-xs text-blue-700 dark:text-blue-400">
+                          GPS auto-tracking is active. Your location will be updated every 5 seconds. Keep this page open while driving.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </CardContent>
               </Card>

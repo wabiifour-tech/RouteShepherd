@@ -5,11 +5,10 @@ import { z } from 'zod/v4';
 const busUpdateSchema = z.object({
   status: z.enum(['available', 'in-transit', 'loading', 'maintenance']).optional(),
   currentLoad: z.number().int().min(0).optional(),
-  driverName: z.string().optional(),
-  driverPhone: z.string().optional(),
   routeId: z.string().nullable().optional(),
   latitude: z.number().nullable().optional(),
   longitude: z.number().nullable().optional(),
+  driverId: z.string().nullable().optional(),
 });
 
 export async function PATCH(
@@ -46,6 +45,14 @@ export async function PATCH(
           include: {
             fromPoint: true,
             toPoint: true,
+          },
+        },
+        driver: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            driverPhone: true,
           },
         },
       },

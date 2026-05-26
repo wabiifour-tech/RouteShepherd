@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -128,6 +129,12 @@ const busStatuses = ["available", "in-transit", "loading", "maintenance"];
 
 const timeSlots = ["06:00-08:00", "08:00-10:00", "10:00-12:00", "12:00-14:00", "14:00-16:00", "16:00-18:00"];
 
+// Generate email from driver name
+function generateDriverEmail(name: string, index: number): string {
+  const parts = name.toLowerCase().split(' ');
+  return `${parts[0]}.${parts[parts.length - 1]}${index}@routeshepherd.ng`;
+}
+
 async function main() {
   console.log("🌱 Seeding database...");
 
@@ -140,8 +147,54 @@ async function main() {
   await prisma.route.deleteMany();
   await prisma.pickupPoint.deleteMany();
   await prisma.event.deleteMany();
+  await prisma.user.deleteMany();
 
-  // 1. Create Events
+  // 1. Create Coordinator Users
+  console.log("👤 Creating coordinator accounts...");
+  const saltRounds = 10;
+  const coordinatorPassword1 = await bcrypt.hash('Shepherd@2026!', saltRounds);
+  const coordinatorPassword2 = await bcrypt.hash('Admin@2026!', saltRounds);
+
+  const coordinator1 = await prisma.user.create({
+    data: {
+      email: 'coordinator@routeshepherd.ng',
+      name: 'Head Coordinator',
+      role: 'coordinator',
+      provider: 'credentials',
+      passwordHash: coordinatorPassword1,
+    },
+  });
+
+  const coordinator2 = await prisma.user.create({
+    data: {
+      email: 'admin@routeshepherd.ng',
+      name: 'System Admin',
+      role: 'coordinator',
+      provider: 'credentials',
+      passwordHash: coordinatorPassword2,
+    },
+  });
+
+  console.log(`   ✅ Created 2 coordinator accounts`);
+
+  // 2. Create Driver Users
+  console.log("🚗 Creating driver accounts...");
+  const driverUsers = [];
+  for (let i = 0; i < driverNames.length; i++) {
+    const driver = await prisma.user.create({
+      data: {
+        email: generateDriverEmail(driverNames[i], i),
+        name: driverNames[i],
+        role: 'driver',
+        provider: 'email-only',
+        driverPhone: driverPhones[i % driverPhones.length],
+      },
+    });
+    driverUsers.push(driver);
+  }
+  console.log(`   ✅ Created ${driverUsers.length} driver accounts`);
+
+  // 3. Create Events
   console.log("📅 Creating events...");
   const congress = await prisma.event.create({
     data: {
@@ -165,7 +218,7 @@ async function main() {
     },
   });
 
-  // 2. Create Pickup Points
+  // 4. Create Pickup Points
   console.log("📍 Creating pickup points...");
   const createdPickupPoints = [];
   for (const pp of pickupPoints) {
@@ -186,7 +239,7 @@ async function main() {
     },
   });
 
-  // 3. Create Routes
+  // 5. Create Routes
   console.log("🛣️ Creating routes...");
   const createdRoutes = [];
   for (const route of routes) {
@@ -205,7 +258,7 @@ async function main() {
     createdRoutes.push(created);
   }
 
-  // 4. Create Buses
+  // 6. Create Buses (with driver assignments via User model)
   console.log("🚌 Creating buses...");
   const plates = generatePlateNumbers();
   const createdBuses = [];
@@ -233,14 +286,16 @@ async function main() {
       busLng = fromPP.longitude + (Math.random() - 0.5) * 0.02;
     }
 
+    // Assign driver to bus
+    const driverUser = driverUsers[i % driverUsers.length];
+
     const bus = await prisma.bus.create({
       data: {
         plateNumber: plates[i],
         capacity,
         currentLoad,
         status,
-        driverName: driverNames[i % driverNames.length],
-        driverPhone: driverPhones[i % driverPhones.length],
+        driverId: driverUser.id,
         routeId: route.id,
         eventId: congress.id,
         latitude: busLat,
@@ -251,7 +306,7 @@ async function main() {
     createdBuses.push(bus);
   }
 
-  // 5. Create Queue Entries
+  // 7. Create Queue Entries
   console.log("📋 Creating queue entries...");
   for (const pp of createdPickupPoints) {
     const baseWait = pp.state === "Lagos" ? 15 + Math.floor(Math.random() * 45) :
@@ -267,7 +322,7 @@ async function main() {
     });
   }
 
-  // 6. Create Demand Forecasts
+  // 8. Create Demand Forecasts
   console.log("📊 Creating demand forecasts...");
   for (const pp of createdPickupPoints) {
     for (const slot of timeSlots) {
@@ -288,7 +343,7 @@ async function main() {
     }
   }
 
-  // 7. Create Notifications
+  // 9. Create Notifications
   console.log("🔔 Creating notifications...");
   await prisma.notification.createMany({
     data: [
@@ -303,7 +358,7 @@ async function main() {
     ],
   });
 
-  // 8. Create Sample Pre-Registrations
+  // 10. Create Sample Pre-Registrations
   console.log("📝 Creating sample pre-registrations...");
   const samplePreregs = [
     { fullName: "Adebayo Johnson", phone: "+234-801-234-5678", pickupPointIdx: 0, preferredTime: "06:00-08:00", passengers: 3, status: "confirmed" },
@@ -330,6 +385,8 @@ async function main() {
   }
 
   console.log(`✅ Seed completed! Created:`);
+  console.log(`   - 2 Coordinator Users (coordinator@routeshepherd.ng / admin@routeshepherd.ng)`);
+  console.log(`   - ${driverUsers.length} Driver Users`);
   console.log(`   - 2 Events`);
   console.log(`   - ${createdPickupPoints.length + 1} Pickup Points (including Redemption City)`);
   console.log(`   - ${createdRoutes.length} Routes`);

@@ -10,7 +10,7 @@ import { motion } from 'framer-motion';
 import Image from 'next/image';
 
 export default function LandingView() {
-  const { setCurrentView } = useAppStore();
+  const { setCurrentView, isAuthenticated, user } = useAppStore();
   const [routes, setRoutes] = useState<Route[]>([]);
   const [pickupPoints, setPickupPoints] = useState<PickupPoint[]>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
@@ -35,6 +35,24 @@ export default function LandingView() {
     }
     loadData();
   }, []);
+
+  // Helper: navigate to passenger portal (with auth check)
+  const goToPassenger = () => {
+    if (isAuthenticated && user?.role === 'passenger') {
+      setCurrentView('passenger');
+    } else {
+      setCurrentView('passenger-login');
+    }
+  };
+
+  // Helper: navigate to coordinator dashboard (with auth check)
+  const goToCoordinator = () => {
+    if (isAuthenticated && user?.role === 'coordinator') {
+      setCurrentView('coordinator');
+    } else {
+      setCurrentView('coordinator-login');
+    }
+  };
 
   // Group pickup points by state
   const pointsByState = pickupPoints.reduce<Record<string, PickupPoint[]>>((acc, pp) => {
@@ -85,7 +103,7 @@ export default function LandingView() {
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button
                 size="lg"
-                onClick={() => setCurrentView('passenger')}
+                onClick={goToPassenger}
                 className="bg-[#F9A825] text-[#1B5E20] hover:bg-[#F9A825]/90 font-semibold text-base px-8"
               >
                 <Users className="mr-2 h-5 w-5" />
@@ -94,7 +112,7 @@ export default function LandingView() {
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => setCurrentView('coordinator')}
+                onClick={goToCoordinator}
                 className="border-white/30 text-white hover:bg-white/10 font-semibold text-base px-8"
               >
                 <BarChart3 className="mr-2 h-5 w-5" />
@@ -181,7 +199,7 @@ export default function LandingView() {
               <Button
                 variant="outline"
                 size="lg"
-                onClick={() => setCurrentView('passenger')}
+                onClick={goToPassenger}
                 className="border-[#1B5E20] text-[#1B5E20] hover:bg-[#1B5E20] hover:text-white"
               >
                 Explore Live Map
@@ -249,7 +267,7 @@ export default function LandingView() {
                       </div>
                       <Button
                         className="mt-4 w-full bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90"
-                        onClick={() => setCurrentView('passenger')}
+                        onClick={goToPassenger}
                       >
                         Register for this Event
                         <ArrowRight className="ml-2 h-4 w-4" />
@@ -361,7 +379,7 @@ export default function LandingView() {
             <div className="flex flex-col gap-4 sm:flex-row sm:justify-center">
               <Button
                 size="lg"
-                onClick={() => setCurrentView('passenger')}
+                onClick={goToPassenger}
                 className="bg-[#F9A825] text-[#1B5E20] hover:bg-[#F9A825]/90 font-semibold text-base px-8"
               >
                 <Users className="mr-2 h-5 w-5" />
@@ -370,7 +388,7 @@ export default function LandingView() {
               <Button
                 size="lg"
                 variant="outline"
-                onClick={() => setCurrentView('coordinator')}
+                onClick={goToCoordinator}
                 className="border-white/30 text-white hover:bg-white/10 font-semibold text-base px-8"
               >
                 Open Coordinator Dashboard

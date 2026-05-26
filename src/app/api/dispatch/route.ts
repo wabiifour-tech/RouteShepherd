@@ -13,7 +13,10 @@ export async function POST(request: Request) {
     const { busId, routeId } = dispatchSchema.parse(body);
 
     // Check bus exists and is available
-    const bus = await db.bus.findUnique({ where: { id: busId } });
+    const bus = await db.bus.findUnique({
+      where: { id: busId },
+      include: { driver: true },
+    });
     if (!bus) {
       return NextResponse.json({ error: 'Bus not found' }, { status: 404 });
     }
@@ -46,6 +49,14 @@ export async function POST(request: Request) {
             toPoint: true,
           },
         },
+        driver: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            driverPhone: true,
+          },
+        },
       },
     });
 
@@ -53,7 +64,7 @@ export async function POST(request: Request) {
     await db.notification.create({
       data: {
         title: 'Bus Dispatched',
-        message: `Bus ${bus.plateNumber} has been dispatched to route ${route.name}. Driver: ${bus.driverName || 'N/A'}`,
+        message: `Bus ${bus.plateNumber} has been dispatched to route ${route.name}. Driver: ${bus.driver?.name || 'N/A'}`,
         type: 'success',
         target: 'coordinator',
       },

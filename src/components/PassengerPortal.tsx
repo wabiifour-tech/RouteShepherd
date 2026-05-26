@@ -54,16 +54,19 @@ const statusLabels: Record<string, string> = {
 };
 
 export default function PassengerPortal() {
-  const { setCurrentView, setSelectedPickupPoint } = useAppStore();
+  const { user, setCurrentView, setSelectedPickupPoint } = useAppStore();
   const [pickupPoints, setPickupPoints] = useState<PickupPoint[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [buses, setBuses] = useState<Bus[]>([]);
   const [queueStatus, setQueueStatus] = useState<Array<{ pickupPointId: string; name: string; state: string; estimatedWait: number | null; queueLength: number | null }>>([]);
   const [events, setEvents] = useState<EventItem[]>([]);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState('map');
+
   // Pre-registration form state
-  const [formName, setFormName] = useState('');
-  const [formPhone, setFormPhone] = useState('');
+  const [formName, setFormName] = useState(user?.name || '');
+  const [formPhone, setFormPhone] = useState(user?.phone || '');
   const [formPickupPoint, setFormPickupPoint] = useState('');
   const [formTime, setFormTime] = useState('');
   const [formPassengers, setFormPassengers] = useState(1);
@@ -75,13 +78,12 @@ export default function PassengerPortal() {
 
   const loadData = useCallback(async () => {
     try {
-      const [routesRes, ppRes, busesRes, queueRes, eventsRes, preregRes] = await Promise.all([
+      const [routesRes, ppRes, busesRes, queueRes, eventsRes] = await Promise.all([
         fetch('/api/routes'),
         fetch('/api/pickup-points'),
         fetch('/api/buses'),
         fetch('/api/queue-status'),
         fetch('/api/events'),
-        fetch('/api/preregister').catch(() => new Response('[]', { status: 200 })),
       ]);
       const routesData = await routesRes.json();
       const ppData = await ppRes.json();
@@ -153,7 +155,7 @@ export default function PassengerPortal() {
       setFormSuccess(true);
       toast.success('Pre-registration successful! Your trip has been recorded.');
       setTimeout(() => {
-        setFormName('');
+        setFormName(user?.name || '');
         setFormPhone('');
         setFormPickupPoint('');
         setFormTime('');
@@ -184,10 +186,11 @@ export default function PassengerPortal() {
           </h1>
           <p className="text-muted-foreground">
             {activeEvent ? `Traveling to ${activeEvent.name}` : 'Find your route to Redemption City'}
+            {user && <span className="ml-2 text-[#1B5E20] font-medium">• Welcome, {user.name || user.email}</span>}
           </p>
         </motion.div>
 
-        <Tabs defaultValue="map" className="space-y-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="map" className="text-xs sm:text-sm">Live Map</TabsTrigger>
             <TabsTrigger value="routes" className="text-xs sm:text-sm">Routes</TabsTrigger>
@@ -285,6 +288,7 @@ export default function PassengerPortal() {
                               onClick={() => {
                                 setSelectedPickupPoint(pp);
                                 setFormPickupPoint(pp.id);
+                                setActiveTab('register');
                               }}
                             >
                               <ArrowRight className="mr-1 h-3 w-3" />
@@ -467,10 +471,10 @@ export default function PassengerPortal() {
                           />
                         </div>
 
-                        {bus.driverName && (
+                        {bus.driver && (
                           <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
                             <Users className="h-3 w-3" />
-                            {bus.driverName}
+                            {bus.driver.name}
                           </div>
                         )}
                       </CardContent>
@@ -498,10 +502,7 @@ export default function PassengerPortal() {
                       <Button
                         variant="outline"
                         className="mt-3"
-                        onClick={() => {
-                          const tabsTrigger = document.querySelector('[data-value="register"]') as HTMLElement;
-                          tabsTrigger?.click();
-                        }}
+                        onClick={() => setActiveTab('register')}
                       >
                         Pre-Register Now
                       </Button>
@@ -669,10 +670,10 @@ function MapComponent({
                 <span className="text-xs capitalize">{bus.status}</span>
                 <br />
                 <span className="text-xs">{bus.currentLoad}/{bus.capacity} passengers</span>
-                {bus.driverName && (
+                {bus.driver && (
                   <>
                     <br />
-                    <span className="text-xs">Driver: {bus.driverName}</span>
+                    <span className="text-xs">Driver: {bus.driver.name}</span>
                   </>
                 )}
               </div>
