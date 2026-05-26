@@ -1,18 +1,23 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { db } from '@/lib/db';
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    // Check for user email in query params (for session validation)
-    const { searchParams } = new URL(request.url);
-    const email = searchParams.get('email');
+    const session = await getServerSession(authOptions);
 
-    if (!email) {
+    if (!session?.user) {
+      return NextResponse.json({ authenticated: false });
+    }
+
+    const userId = (session.user as { id?: string }).id;
+    if (!userId) {
       return NextResponse.json({ authenticated: false });
     }
 
     const user = await db.user.findUnique({
-      where: { email },
+      where: { id: userId },
       include: {
         assignedBuses: {
           include: {

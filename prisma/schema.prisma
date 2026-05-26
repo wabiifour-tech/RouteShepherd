@@ -17,14 +17,21 @@ model User {
   provider      String   @default("google") // google, credentials, email-only
 
   // Coordinator-specific
-  passwordHash  String?  // only for coordinators
+  passwordHash  String?  // hashed password for coordinators
 
   // Driver-specific
   driverPhone   String?
+  pinHash       String?  // hashed 6-digit PIN for drivers
+
+  // Passenger-specific
+  password      String?  // hashed password for passengers who sign up with email
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   assignedBuses Bus[]    // Buses where this user is the driver (inverse of Bus.driverId)
+
+  @@index([role])
+  @@index([email])
 }
 
 model Event {

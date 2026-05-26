@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { z } from 'zod/v4';
+import { requireAuth, requireAnyRole } from '@/lib/api-auth';
 
 const busUpdateSchema = z.object({
   status: z.enum(['available', 'in-transit', 'loading', 'maintenance']).optional(),
@@ -16,6 +17,12 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Require authentication - only drivers and coordinators can update buses
+    const user = await requireAnyRole(['driver', 'coordinator']);
+    if (!user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const { id } = await params;
     const body = await request.json();
     const validated = busUpdateSchema.parse(body);
@@ -26,11 +33,27 @@ export async function PATCH(
       return NextResponse.json({ error: 'Bus not found' }, { status: 404 });
     }
 
+    // Drivers can only update their own bus
+    if (user.role === 'driver' && existing.driverId !== user.id) {
+      return NextResponse.json(
+        { error: 'You can only update buses assigned to you' },
+        { status: 403 }
+      );
+    }
+
     // Validate currentLoad doesn't exceed capacity
     if (validated.currentLoad !== undefined && validated.currentLoad > existing.capacity) {
       return NextResponse.json(
         { error: `Current load (${validated.currentLoad}) exceeds capacity (${existing.capacity})` },
         { status: 400 }
+      );
+    }
+
+    // Only coordinators can reassign drivers
+    if (validated.driverId !== undefined && user.role !== 'coordinator') {
+      return NextResponse.json(
+        { error: 'Only coordinators can reassign drivers' },
+        { status: 403 }
       );
     }
 

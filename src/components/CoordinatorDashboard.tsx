@@ -81,6 +81,7 @@ export default function CoordinatorDashboard() {
   const [driverEmail, setDriverEmail] = useState('');
   const [driverPhone, setDriverPhone] = useState('');
   const [driverBusId, setDriverBusId] = useState('');
+  const [driverPin, setDriverPin] = useState('');
   const [savingDriver, setSavingDriver] = useState(false);
 
   // Active tab
@@ -219,6 +220,7 @@ export default function CoordinatorDashboard() {
     setDriverEmail('');
     setDriverPhone('');
     setDriverBusId('');
+    setDriverPin('');
     setDriverDialogOpen(true);
   };
 
@@ -265,6 +267,7 @@ export default function CoordinatorDashboard() {
             name: driverName,
             email: driverEmail,
             phone: driverPhone,
+            pin: driverPin || '123456',
             busId: driverBusId || undefined,
           }),
         });
@@ -272,7 +275,7 @@ export default function CoordinatorDashboard() {
           const err = await res.json();
           throw new Error(err.error || 'Failed to add driver');
         }
-        toast.success('Driver added successfully!');
+        toast.success(`Driver added successfully! PIN: ${driverPin || '123456'}`);
       }
       setDriverDialogOpen(false);
       loadData();
@@ -623,6 +626,18 @@ export default function CoordinatorDashboard() {
                             </SelectContent>
                           </Select>
                         </div>
+                        {!editDriverId && (
+                          <div>
+                            <Label>6-Digit PIN <span className="text-muted-foreground font-normal">(Default: 123456)</span></Label>
+                            <Input
+                              placeholder="123456"
+                              value={driverPin}
+                              onChange={(e) => setDriverPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                              maxLength={6}
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">The driver will use this PIN to sign in. Leave blank for default (123456).</p>
+                          </div>
+                        )}
                       </div>
                       <DialogFooter>
                         <DialogClose asChild>

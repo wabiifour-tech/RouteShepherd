@@ -62,3 +62,78 @@ Stage Summary:
 - All API endpoints returning 200 OK with proper data
 - Security: Wrong credentials rejected, wrong roles rejected, non-existent users rejected
 - Premium logo generated
+---
+Task ID: 3
+Agent: Security Fix Agent
+Task: Fix ALL critical security issues in RouteShepherd application
+
+Work Log:
+- Read all existing source files, API routes, auth components, and seed data
+- Created /src/middleware.ts - JWT-based auth middleware protecting all API routes
+  - Public routes: /api/auth/*, /api/events, /api/pickup-points, /api/queue-status, /api/demand-forecasts, /api/routes
+  - Public GET: /api/buses, /api/notifications
+  - Public POST: /api/preregister (passengers can pre-register without auth)
+  - All other API routes require valid NextAuth JWT token
+- Created /src/lib/api-auth.ts - Helper functions for server-side auth checks
+  - requireAuth(), requireRole(), requireCoordinator(), requireDriver(), requireAnyRole()
+- Updated /prisma/schema.prisma - Added security fields:
+  - pinHash (String?) - hashed 6-digit PIN for drivers
+  - password (String?) - hashed password for passengers with email signup
+  - Added @@index([role]) and @@index([email]) for query performance
+- Updated /src/lib/auth.ts - Added NextAuth credential providers:
+  - Driver provider: requires email + 6-digit PIN (bcrypt verified)
+  - Passenger provider: requires email + password (bcrypt verified)
+  - Coordinator provider: already had email + password (kept as-is)
+- Fixed /api/auth/me/route.ts - CRITICAL FIX:
+  - Removed email query param auth bypass
+  - Now uses getServerSession(authOptions) to get authenticated user
+  - Returns user data only from valid NextAuth session
+- Fixed /api/auth/driver-login/route.ts - CRITICAL FIX:
+  - Added 6-digit PIN verification with bcrypt
+  - Zod schema requires email + 6-digit numeric PIN
+  - PIN is validated against hashed pinHash in database
+- Fixed /api/auth/signup/route.ts - CRITICAL FIX:
+  - Added required password field (min 6 chars)
+  - Password is hashed with bcrypt before storage
+  - Provider changed from 'email' to 'credentials' for proper NextAuth integration
+- Fixed /api/auth/coordinator-login/route.ts - No code change needed (already secure with bcrypt)
+  - Frontend now establishes NextAuth session after validation
+- Added server-side auth checks to ALL protected API routes:
+  - /api/buses/route.ts - GET is public (unchanged)
+  - /api/buses/[id]/route.ts - PATCH requires driver/coordinator auth; drivers can only update own bus
+  - /api/dispatch/route.ts - POST requires coordinator auth only
+  - /api/driver-location/route.ts - PATCH requires driver auth; drivers can only update own bus location
+  - /api/drivers/route.ts - GET requires coordinator; POST requires coordinator + PIN hashing; PATCH requires coordinator + optional PIN update; DELETE requires coordinator
+  - /api/notifications/route.ts - GET is public; POST requires auth
+  - /api/preregister/route.ts - GET requires coordinator; POST is public
+- Fixed frontend auth components:
+  - DriverLoginPage.tsx: Added 6-digit PIN input field, uses NextAuth signIn('driver') to establish session
+  - CoordinatorLoginPage.tsx: "Remember Me" now only stores email in localStorage, NOT password. Uses NextAuth signIn('coordinator') for session
+  - PassengerLoginPage.tsx: Sign-in now requires password (uses NextAuth signIn('passenger')). Sign-up requires password + confirm password. Google OAuth preserved.
+- Updated /src/components/CoordinatorDashboard.tsx:
+  - Added PIN field to driver creation dialog
+  - PIN defaults to "123456" if left blank
+  - Shows assigned PIN in success toast
+  - Added driverPin state management
+- Updated /prisma/seed.ts:
+  - All 50 drivers now get hashed PIN (default: "123456")
+  - Added 4 sample passenger accounts with hashed passwords
+  - Driver provider changed from 'email-only' to 'credentials'
+  - Properly typed arrays (User[], PickupPoint[], Route[], Bus[])
+- Fixed /next.config.ts: Set ignoreBuildErrors to false
+- Fixed /src/lib/db.ts: Query logging now dev-only (NODE_ENV === 'development')
+- Fixed /tsconfig.json: Excluded examples/ and skills/ from compilation
+- Fixed /src/components/PassengerPortal.tsx: Fixed TypeScript error with Icon prototype cast
+- Build verification: TypeScript compiles clean, Next.js build succeeds, lint passes (0 errors)
+
+Stage Summary:
+- All 5 critical security vulnerabilities fixed:
+  1. Server-side auth on ALL mutation API routes (middleware + per-route checks)
+  2. Driver login now requires 6-digit PIN (bcrypt hashed)
+  3. /api/auth/me no longer accepts email query param - requires NextAuth session
+  4. Coordinator "Remember Me" only stores email, not password
+  5. Passenger sign-in now requires password verification (bcrypt)
+- NextAuth session established for all login types (coordinator, driver, passenger)
+- Role-based access control enforced on all protected endpoints
+- All credentials properly hashed with bcrypt
+- Build passes with 0 TypeScript errors

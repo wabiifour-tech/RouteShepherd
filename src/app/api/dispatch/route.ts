@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { z } from 'zod/v4';
+import { requireCoordinator } from '@/lib/api-auth';
 
 const dispatchSchema = z.object({
   busId: z.string().min(1),
@@ -9,6 +10,12 @@ const dispatchSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    // Only coordinators can dispatch buses
+    const user = await requireCoordinator();
+    if (!user) {
+      return NextResponse.json({ error: 'Coordinator authentication required' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { busId, routeId } = dispatchSchema.parse(body);
 

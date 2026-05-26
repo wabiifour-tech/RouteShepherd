@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { z } from 'zod/v4';
+import { requireCoordinator } from '@/lib/api-auth';
 
 const preregisterSchema = z.object({
   fullName: z.string().min(2, 'Full name is required'),
@@ -12,6 +13,12 @@ const preregisterSchema = z.object({
 
 export async function GET() {
   try {
+    // Only coordinators can view all pre-registrations
+    const user = await requireCoordinator();
+    if (!user) {
+      return NextResponse.json({ error: 'Coordinator authentication required' }, { status: 401 });
+    }
+
     const preregs = await db.preRegistration.findMany({
       include: { pickupPoint: true },
       orderBy: { createdAt: 'desc' },
@@ -24,6 +31,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  // POST is public - passengers can pre-register without auth
   try {
     const body = await request.json();
     const validated = preregisterSchema.parse(body);

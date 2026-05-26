@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, User, PickupPoint, Route, Bus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
@@ -177,22 +177,24 @@ async function main() {
 
   console.log(`   ✅ Created 2 coordinator accounts`);
 
-  // 2. Create Driver Users
-  console.log("🚗 Creating driver accounts...");
-  const driverUsers = [];
+  // 2. Create Driver Users (with hashed PINs)
+  console.log("🚗 Creating driver accounts with PINs...");
+  const driverUsers: User[] = [];
+  const defaultPinHash = await bcrypt.hash('123456', saltRounds);
   for (let i = 0; i < driverNames.length; i++) {
     const driver = await prisma.user.create({
       data: {
         email: generateDriverEmail(driverNames[i], i),
         name: driverNames[i],
         role: 'driver',
-        provider: 'email-only',
+        provider: 'credentials',
         driverPhone: driverPhones[i % driverPhones.length],
+        pinHash: defaultPinHash,
       },
     });
     driverUsers.push(driver);
   }
-  console.log(`   ✅ Created ${driverUsers.length} driver accounts`);
+  console.log(`   ✅ Created ${driverUsers.length} driver accounts (default PIN: 123456)`);
 
   // 3. Create Events
   console.log("📅 Creating events...");
@@ -220,7 +222,7 @@ async function main() {
 
   // 4. Create Pickup Points
   console.log("📍 Creating pickup points...");
-  const createdPickupPoints = [];
+  const createdPickupPoints: PickupPoint[] = [];
   for (const pp of pickupPoints) {
     const created = await prisma.pickupPoint.create({ data: pp });
     createdPickupPoints.push(created);
@@ -241,7 +243,7 @@ async function main() {
 
   // 5. Create Routes
   console.log("🛣️ Creating routes...");
-  const createdRoutes = [];
+  const createdRoutes: Route[] = [];
   for (const route of routes) {
     const fromPoint = createdPickupPoints[route.fromIdx];
     const created = await prisma.route.create({
@@ -261,7 +263,7 @@ async function main() {
   // 6. Create Buses (with driver assignments via User model)
   console.log("🚌 Creating buses...");
   const plates = generatePlateNumbers();
-  const createdBuses = [];
+  const createdBuses: Bus[] = [];
 
   for (let i = 0; i < plates.length; i++) {
     const routeIdx = i % createdRoutes.length;
@@ -384,9 +386,31 @@ async function main() {
     });
   }
 
+  // 11. Create Sample Passenger Users (with passwords)
+  console.log("👤 Creating sample passenger accounts...");
+  const samplePassengers = [
+    { email: "adebayo.j@example.com", name: "Adebayo Johnson", password: "Passenger@1" },
+    { email: "chioma.n@example.com", name: "Chioma Nwosu", password: "Passenger@2" },
+    { email: "ibrahim.g@example.com", name: "Ibrahim Garba", password: "Passenger@3" },
+    { email: "funke.a@example.com", name: "Funke Adeyemi", password: "Passenger@4" },
+  ];
+
+  for (const p of samplePassengers) {
+    await prisma.user.create({
+      data: {
+        email: p.email,
+        name: p.name,
+        role: 'passenger',
+        provider: 'credentials',
+        password: await bcrypt.hash(p.password, saltRounds),
+      },
+    });
+  }
+
   console.log(`✅ Seed completed! Created:`);
   console.log(`   - 2 Coordinator Users (coordinator@routeshepherd.ng / admin@routeshepherd.ng)`);
-  console.log(`   - ${driverUsers.length} Driver Users`);
+  console.log(`   - ${driverUsers.length} Driver Users (default PIN: 123456)`);
+  console.log(`   - ${samplePassengers.length} Sample Passenger Users`);
   console.log(`   - 2 Events`);
   console.log(`   - ${createdPickupPoints.length + 1} Pickup Points (including Redemption City)`);
   console.log(`   - ${createdRoutes.length} Routes`);

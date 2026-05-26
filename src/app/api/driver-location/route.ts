@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { z } from 'zod/v4';
+import { requireDriver } from '@/lib/api-auth';
 
 const locationSchema = z.object({
   busId: z.string().min(1, 'Bus ID is required'),
@@ -10,12 +11,26 @@ const locationSchema = z.object({
 
 export async function PATCH(request: Request) {
   try {
+    // Only drivers can update their bus location
+    const user = await requireDriver();
+    if (!user) {
+      return NextResponse.json({ error: 'Driver authentication required' }, { status: 401 });
+    }
+
     const body = await request.json();
     const { busId, latitude, longitude } = locationSchema.parse(body);
 
     const bus = await db.bus.findUnique({ where: { id: busId } });
     if (!bus) {
       return NextResponse.json({ error: 'Bus not found' }, { status: 404 });
+    }
+
+    // Driver can only update location for buses assigned to them
+    if (bus.driverId !== user.id) {
+      return NextResponse.json(
+        { error: 'You can only update location for buses assigned to you' },
+        { status: 403 }
+      );
     }
 
     const updated = await db.bus.update({

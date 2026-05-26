@@ -10,6 +10,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Bus, Lock, Mail, ArrowLeft, Loader2, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { signIn } from 'next-auth/react';
 
 const REMEMBER_KEY = 'rs_coordinator_remember';
 
@@ -20,34 +21,20 @@ export default function CoordinatorLoginPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  // Load saved credentials on mount
+  // Load saved email on mount (NOT password)
   useEffect(() => {
     try {
       const saved = localStorage.getItem(REMEMBER_KEY);
       if (saved) {
         const data = JSON.parse(saved);
         if (data.email) setEmail(data.email);
-        if (data.password) setPassword(data.password);
+        // Only store email - password must be re-entered each time
         setRememberMe(true);
       }
     } catch {
       // ignore
     }
   }, []);
-
-  // Auto-fill when email field is focused and remember me was checked
-  const handleEmailFocus = () => {
-    try {
-      const saved = localStorage.getItem(REMEMBER_KEY);
-      if (saved) {
-        const data = JSON.parse(saved);
-        if (data.email && !email) setEmail(data.email);
-        if (data.password && !password) setPassword(data.password);
-      }
-    } catch {
-      // ignore
-    }
-  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -56,6 +43,7 @@ export default function CoordinatorLoginPage() {
     }
     setSubmitting(true);
     try {
+      // First validate credentials via our API
       const res = await fetch('/api/auth/coordinator-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -66,9 +54,20 @@ export default function CoordinatorLoginPage() {
         throw new Error(data.error || 'Login failed');
       }
 
-      // Save or clear remember me
+      // Establish NextAuth session
+      const result = await signIn('coordinator', {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        throw new Error(result.error);
+      }
+
+      // Save or clear remember me (email only, NOT password)
       if (rememberMe) {
-        localStorage.setItem(REMEMBER_KEY, JSON.stringify({ email, password }));
+        localStorage.setItem(REMEMBER_KEY, JSON.stringify({ email }));
       } else {
         localStorage.removeItem(REMEMBER_KEY);
       }
@@ -146,7 +145,6 @@ export default function CoordinatorLoginPage() {
                 placeholder="coordinator@routeshepherd.ng"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                onFocus={handleEmailFocus}
               />
             </div>
             <div>

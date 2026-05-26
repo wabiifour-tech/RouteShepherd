@@ -39,6 +39,7 @@ export async function POST(request: Request) {
       );
     }
 
+    // Return user info for the frontend to establish a NextAuth session
     return NextResponse.json({
       id: user.id,
       email: user.email,

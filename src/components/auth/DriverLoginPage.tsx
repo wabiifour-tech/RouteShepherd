@@ -6,13 +6,15 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Bus, Mail, ArrowLeft, Loader2, MapPin, AlertCircle } from 'lucide-react';
+import { Bus, Lock, Mail, ArrowLeft, Loader2, MapPin, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { signIn } from 'next-auth/react';
 
 export default function DriverLoginPage() {
   const { setCurrentView, setUser } = useAppStore();
   const [email, setEmail] = useState('');
+  const [pin, setPin] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const handleLogin = async () => {
@@ -20,16 +22,32 @@ export default function DriverLoginPage() {
       toast.error('Please enter your email');
       return;
     }
+    if (!pin || pin.length !== 6) {
+      toast.error('Please enter your 6-digit PIN');
+      return;
+    }
     setSubmitting(true);
     try {
+      // First validate credentials via our API
       const res = await fetch('/api/auth/driver-login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, pin }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Login failed');
+      }
+
+      // Establish NextAuth session
+      const result = await signIn('driver', {
+        email,
+        pin,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        throw new Error(result.error);
       }
 
       setUser({
@@ -39,7 +57,7 @@ export default function DriverLoginPage() {
         image: null,
         role: 'driver',
         phone: null,
-        provider: 'email-only',
+        provider: 'credentials',
         driverPhone: data.driverPhone,
         assignedBuses: data.assignedBuses,
       });
@@ -50,7 +68,7 @@ export default function DriverLoginPage() {
         image: null,
         role: 'driver',
         phone: null,
-        provider: 'email-only',
+        provider: 'credentials',
         driverPhone: data.driverPhone,
         assignedBuses: data.assignedBuses,
       }));
@@ -61,6 +79,12 @@ export default function DriverLoginPage() {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handlePinChange = (value: string) => {
+    // Only allow digits, max 6
+    const digits = value.replace(/\D/g, '').slice(0, 6);
+    setPin(digits);
   };
 
   return (
@@ -88,17 +112,17 @@ export default function DriverLoginPage() {
             Driver <span className="text-[#1B5E20]">Login</span>
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Sign in with your email to manage your bus
+            Sign in with your email and 6-digit PIN
           </p>
         </div>
 
         <Card className="shadow-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Mail className="h-5 w-5 text-[#1B5E20]" />
+              <Lock className="h-5 w-5 text-[#1B5E20]" />
               Sign In
             </CardTitle>
-            <CardDescription>Enter the email your coordinator assigned to you</CardDescription>
+            <CardDescription>Enter the email and PIN assigned by your coordinator</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -109,6 +133,18 @@ export default function DriverLoginPage() {
                 placeholder="driver@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="driver-pin">6-Digit PIN</Label>
+              <Input
+                id="driver-pin"
+                type="password"
+                inputMode="numeric"
+                placeholder="Enter your 6-digit PIN"
+                value={pin}
+                onChange={(e) => handlePinChange(e.target.value)}
+                maxLength={6}
                 onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
               />
             </div>
@@ -117,8 +153,8 @@ export default function DriverLoginPage() {
               <div className="flex gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                 <div className="text-xs text-amber-700 dark:text-amber-400">
-                  <p>No password needed. Simply enter the email your coordinator used when adding you to the system.</p>
-                  <p className="mt-1">If your email is not found, ask your coordinator to add you first.</p>
+                  <p>Your coordinator assigned you an email and a 6-digit PIN when creating your account. Enter both to sign in.</p>
+                  <p className="mt-1">If you don&apos;t know your PIN, ask your coordinator to reset it for you.</p>
                 </div>
               </div>
             </div>

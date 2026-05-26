@@ -1,9 +1,17 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { z } from 'zod/v4';
+import { requireCoordinator, requireAuth } from '@/lib/api-auth';
+import bcrypt from 'bcryptjs';
 
 export async function GET() {
   try {
+    // Only coordinators can list all drivers
+    const user = await requireCoordinator();
+    if (!user) {
+      return NextResponse.json({ error: 'Coordinator authentication required' }, { status: 401 });
+    }
+
     const drivers = await db.user.findMany({
       where: { role: 'driver' },
       include: {
@@ -31,13 +39,20 @@ const driverSchema = z.object({
   name: z.string().min(2, 'Driver name is required'),
   email: z.string().email('Valid email is required'),
   phone: z.string().min(1, 'Phone number is required'),
+  pin: z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits').default('123456'),
   busId: z.string().optional(), // Assign to bus
 });
 
 export async function POST(request: Request) {
   try {
+    // Only coordinators can create drivers
+    const user = await requireCoordinator();
+    if (!user) {
+      return NextResponse.json({ error: 'Coordinator authentication required' }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { name, email, phone, busId } = driverSchema.parse(body);
+    const { name, email, phone, pin, busId } = driverSchema.parse(body);
 
     // Check if email already exists
     const existing = await db.user.findUnique({
@@ -51,14 +66,19 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create driver user
+    // Hash the PIN
+    const saltRounds = 10;
+    const pinHash = await bcrypt.hash(pin, saltRounds);
+
+    // Create driver user with hashed PIN
     const driver = await db.user.create({
       data: {
         email,
         name,
         driverPhone: phone,
         role: 'driver',
-        provider: 'email-only',
+        provider: 'credentials',
+        pinHash,
       },
     });
 
@@ -108,17 +128,31 @@ const driverUpdateSchema = z.object({
   name: z.string().min(2).optional(),
   email: z.string().email().optional(),
   phone: z.string().optional(),
+  pin: z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits').optional(),
   busId: z.string().nullable().optional(), // null to unassign
 });
 
 export async function PATCH(request: Request) {
   try {
+    // Only coordinators can update drivers
+    const user = await requireCoordinator();
+    if (!user) {
+      return NextResponse.json({ error: 'Coordinator authentication required' }, { status: 401 });
+    }
+
     const body = await request.json();
-    const { id, name, email, phone, busId } = driverUpdateSchema.parse(body);
+    const { id, name, email, phone, pin, busId } = driverUpdateSchema.parse(body);
 
     const existing = await db.user.findUnique({ where: { id } });
     if (!existing || existing.role !== 'driver') {
       return NextResponse.json({ error: 'Driver not found' }, { status: 404 });
+    }
+
+    // Hash new PIN if provided
+    let pinHash: string | undefined;
+    if (pin) {
+      const saltRounds = 10;
+      pinHash = await bcrypt.hash(pin, saltRounds);
     }
 
     // Update driver info
@@ -128,6 +162,7 @@ export async function PATCH(request: Request) {
         ...(name ? { name } : {}),
         ...(email ? { email } : {}),
         ...(phone ? { driverPhone: phone } : {}),
+        ...(pinHash ? { pinHash } : {}),
       },
     });
 
@@ -180,6 +215,12 @@ export async function PATCH(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    // Only coordinators can delete drivers
+    const user = await requireCoordinator();
+    if (!user) {
+      return NextResponse.json({ error: 'Coordinator authentication required' }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
 

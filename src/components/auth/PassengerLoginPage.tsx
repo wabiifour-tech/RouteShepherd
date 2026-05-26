@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Bus, Users, Mail, Lock, ArrowLeft, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
+import { signIn } from 'next-auth/react';
 
 export default function PassengerLoginPage() {
   const { setCurrentView, setUser } = useAppStore();
@@ -16,11 +17,21 @@ export default function PassengerLoginPage() {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const handleSignUp = async () => {
-    if (!email || !name) {
-      toast.error('Please fill in all required fields');
+    if (!email || !name || !password) {
+      toast.error('Please fill in all required fields (name, email, password)');
+      return;
+    }
+    if (password.length < 6) {
+      toast.error('Password must be at least 6 characters');
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error('Passwords do not match');
       return;
     }
     setSubmitting(true);
@@ -28,12 +39,25 @@ export default function PassengerLoginPage() {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, phone }),
+        body: JSON.stringify({ email, name, phone, password }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data.error || 'Sign up failed');
       }
+
+      // Establish NextAuth session with the new credentials
+      const result = await signIn('passenger', {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        // Session creation failed but account was created
+        console.warn('Session creation failed after signup:', result.error);
+      }
+
       setUser({
         id: data.id,
         email: data.email,
@@ -41,9 +65,8 @@ export default function PassengerLoginPage() {
         image: null,
         role: 'passenger',
         phone: phone || null,
-        provider: 'email',
+        provider: 'credentials',
       });
-      // Also save to localStorage for persistence
       localStorage.setItem('rs_user', JSON.stringify({
         id: data.id,
         email: data.email,
@@ -51,7 +74,7 @@ export default function PassengerLoginPage() {
         image: null,
         role: 'passenger',
         phone: phone || null,
-        provider: 'email',
+        provider: 'credentials',
       }));
       toast.success('Account created successfully! Welcome aboard.');
       setCurrentView('passenger');
@@ -63,20 +86,43 @@ export default function PassengerLoginPage() {
   };
 
   const handleSignIn = async () => {
-    if (!email) {
-      toast.error('Please enter your email');
+    if (!email || !password) {
+      toast.error('Please enter both email and password');
       return;
     }
     setSubmitting(true);
     try {
-      // Check if user exists
-      const res = await fetch(`/api/auth/me?email=${encodeURIComponent(email)}`);
-      const data = await res.json();
-      if (!data.authenticated || data.user.role !== 'passenger') {
-        throw new Error('Account not found. Please sign up first.');
+      // Sign in via NextAuth credentials provider
+      const result = await signIn('passenger', {
+        email,
+        password,
+        redirect: false,
+      });
+
+      if (result?.error) {
+        throw new Error(result.error === 'CredentialsSignin'
+          ? 'Invalid email or password. If you signed up with Google, please use Google sign-in.'
+          : result.error);
       }
-      setUser(data.user);
-      localStorage.setItem('rs_user', JSON.stringify(data.user));
+
+      // Get user data from NextAuth session
+      const sessionRes = await fetch('/api/auth/session');
+      const session = await sessionRes.json();
+
+      if (session?.user) {
+        const userData = {
+          id: (session.user as Record<string, unknown>).id as string || '',
+          email: session.user.email || '',
+          name: session.user.name || null,
+          image: session.user.image || null,
+          role: (session.user as Record<string, unknown>).role as string || 'passenger',
+          phone: null,
+          provider: (session.user as Record<string, unknown>).provider as string || 'credentials',
+        };
+        setUser(userData);
+        localStorage.setItem('rs_user', JSON.stringify(userData));
+      }
+
       toast.success('Welcome back!');
       setCurrentView('passenger');
     } catch (err) {
@@ -87,15 +133,12 @@ export default function PassengerLoginPage() {
   };
 
   const handleGoogleSignUp = () => {
-    // Set a cookie to indicate sign-up intent
     document.cookie = 'auth_intent=signup; path=/; max-age=300';
-    // Use NextAuth Google sign-in
     const callbackUrl = encodeURIComponent(window.location.origin);
     window.location.href = `/api/auth/signin/google?callbackUrl=${callbackUrl}`;
   };
 
   const handleGoogleSignIn = () => {
-    // Set a cookie to indicate sign-in intent
     document.cookie = 'auth_intent=signin; path=/; max-age=300';
     const callbackUrl = encodeURIComponent(window.location.origin);
     window.location.href = `/api/auth/signin/google?callbackUrl=${callbackUrl}`;
@@ -215,8 +258,8 @@ export default function PassengerLoginPage() {
                   <AlertCircle className="h-4 w-4 text-[#F9A825] mt-0.5 shrink-0" />
                   <div className="text-xs text-muted-foreground">
                     <p className="font-medium text-foreground mb-1">Sign Up vs Sign In:</p>
-                    <p><strong>Sign Up</strong> — Create a new account. First time here? This is for you.</p>
-                    <p className="mt-1"><strong>Sign In</strong> — Already have an account? Log back in. Your email must already exist in our system.</p>
+                    <p><strong>Sign Up</strong> — Create a new account with email and password. First time here? This is for you.</p>
+                    <p className="mt-1"><strong>Sign In</strong> — Already have an account? Enter your email and password to log back in.</p>
                   </div>
                 </div>
               </div>
@@ -231,7 +274,7 @@ export default function PassengerLoginPage() {
                 <CheckCircle className="h-5 w-5 text-[#1B5E20]" />
                 Create Account
               </CardTitle>
-              <CardDescription>Sign up to pre-register your trip</CardDescription>
+              <CardDescription>Sign up with email and password</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -262,6 +305,27 @@ export default function PassengerLoginPage() {
                   onChange={(e) => setPhone(e.target.value)}
                 />
               </div>
+              <div>
+                <Label htmlFor="signup-password">Password *</Label>
+                <Input
+                  id="signup-password"
+                  type="password"
+                  placeholder="At least 6 characters"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label htmlFor="signup-confirm-password">Confirm Password *</Label>
+                <Input
+                  id="signup-confirm-password"
+                  type="password"
+                  placeholder="Re-enter your password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSignUp()}
+                />
+              </div>
               <Button
                 className="w-full bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90 h-12"
                 onClick={handleSignUp}
@@ -288,10 +352,10 @@ export default function PassengerLoginPage() {
           <Card className="shadow-xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Mail className="h-5 w-5 text-[#1B5E20]" />
+                <Lock className="h-5 w-5 text-[#1B5E20]" />
                 Sign In
               </CardTitle>
-              <CardDescription>Enter your email to access your account</CardDescription>
+              <CardDescription>Enter your email and password</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
@@ -304,11 +368,22 @@ export default function PassengerLoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
+              <div>
+                <Label htmlFor="signin-password">Password *</Label>
+                <Input
+                  id="signin-password"
+                  type="password"
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleSignIn()}
+                />
+              </div>
               <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 p-3">
                 <div className="flex gap-2">
                   <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                   <p className="text-xs text-amber-700 dark:text-amber-400">
-                    You must have signed up before you can sign in. If your email is not found, please create an account first.
+                    If you signed up with Google, please use the Google sign-in button above. Email sign-in requires a password set during sign-up.
                   </p>
                 </div>
               </div>
@@ -320,7 +395,7 @@ export default function PassengerLoginPage() {
                 {submitting ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
-                  <Mail className="mr-2 h-4 w-4" />
+                  <Lock className="mr-2 h-4 w-4" />
                 )}
                 {submitting ? 'Signing In...' : 'Sign In'}
               </Button>

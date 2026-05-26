@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { z } from 'zod/v4';
+import { requireAuth } from '@/lib/api-auth';
 
 export async function GET() {
+  // GET is public - anyone can view notifications
   try {
     const notifications = await db.notification.findMany({
       orderBy: { createdAt: 'desc' },
@@ -24,6 +26,12 @@ const notificationSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    // Require authentication for creating notifications
+    const user = await requireAuth();
+    if (!user) {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+
     const body = await request.json();
     const validated = notificationSchema.parse(body);
 

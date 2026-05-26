@@ -1,17 +1,19 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import bcrypt from 'bcryptjs';
 import { z } from 'zod/v4';
 
 const signupSchema = z.object({
   email: z.string().email('Invalid email address'),
   name: z.string().min(2, 'Name is required').optional(),
   phone: z.string().optional(),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, name, phone } = signupSchema.parse(body);
+    const { email, name, phone, password } = signupSchema.parse(body);
 
     // Check if user already exists
     const existing = await db.user.findUnique({
@@ -25,6 +27,10 @@ export async function POST(request: Request) {
       );
     }
 
+    // Hash the password
+    const saltRounds = 10;
+    const passwordHash = await bcrypt.hash(password, saltRounds);
+
     // Create new passenger user
     const user = await db.user.create({
       data: {
@@ -32,7 +38,8 @@ export async function POST(request: Request) {
         name: name || null,
         phone: phone || null,
         role: 'passenger',
-        provider: 'email',
+        provider: 'credentials',
+        password: passwordHash,
       },
     });
 

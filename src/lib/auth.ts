@@ -54,10 +54,11 @@ export const authOptions: NextAuthOptions = {
       name: 'Driver Login',
       credentials: {
         email: { label: 'Email', type: 'email' },
+        pin: { label: '6-Digit PIN', type: 'text' },
       },
       async authorize(credentials) {
-        if (!credentials?.email) {
-          throw new Error('Email is required');
+        if (!credentials?.email || !credentials?.pin) {
+          throw new Error('Email and PIN are required');
         }
 
         const user = await db.user.findUnique({
@@ -66,6 +67,15 @@ export const authOptions: NextAuthOptions = {
 
         if (!user || user.role !== 'driver') {
           throw new Error('No driver account found with this email. Please contact your coordinator.');
+        }
+
+        if (!user.pinHash) {
+          throw new Error('No PIN set for this driver. Please contact your coordinator to set up your PIN.');
+        }
+
+        const isValid = await bcrypt.compare(credentials.pin, user.pinHash);
+        if (!isValid) {
+          throw new Error('Invalid PIN. Please try again.');
         }
 
         return {
@@ -79,19 +89,54 @@ export const authOptions: NextAuthOptions = {
         };
       },
     }),
+    CredentialsProvider({
+      id: 'passenger',
+      name: 'Passenger Login',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        password: { label: 'Password', type: 'password' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          throw new Error('Email and password are required');
+        }
+
+        const user = await db.user.findUnique({
+          where: { email: credentials.email },
+        });
+
+        if (!user || user.role !== 'passenger') {
+          throw new Error('No passenger account found with this email.');
+        }
+
+        if (!user.password) {
+          throw new Error('This account was created with Google. Please sign in with Google instead.');
+        }
+
+        const isValid = await bcrypt.compare(credentials.password, user.password);
+        if (!isValid) {
+          throw new Error('Invalid email or password.');
+        }
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          role: user.role,
+          provider: user.provider,
+        };
+      },
+    }),
   ],
   callbacks: {
     async signIn({ user, account }) {
       if (account?.provider === 'google') {
-        // Check auth intent from the callback URL
-        // Default behavior: allow sign-in, create user if doesn't exist (sign-up flow)
-        // The frontend will handle the sign-up vs sign-in distinction
         const existingUser = await db.user.findUnique({
           where: { email: user.email! },
         });
 
         if (!existingUser) {
-          // Create new passenger user (sign-up)
           await db.user.create({
             data: {
               email: user.email!,
