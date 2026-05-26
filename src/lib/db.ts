@@ -27,33 +27,11 @@ function createPrismaClient(): PrismaClient {
     return new PrismaClient()
   }
 
-  // For Vercel/serverless: Use the Neon serverless adapter for better connection handling
-  const isServerless = process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
-  if (isServerless) {
-    try {
-      // Dynamic import for Neon adapter — only used in serverless environments
-      const { PrismaNeon } = require('@prisma/adapter-neon')
-      console.log('[DB] Initializing Neon serverless adapter for serverless environment')
-      // PrismaNeon constructor takes PoolConfig (connection options), not a Pool instance
-      const adapter = new PrismaNeon({ connectionString: databaseUrl })
-      return new PrismaClient({ adapter })
-    } catch (adapterError) {
-      console.warn('[DB] Neon adapter initialization failed, falling back to standard PrismaClient:', adapterError)
-      // Fall through to standard client with datasources override
-    }
-  }
-
-  // For local development or when adapter isn't available:
-  // Override the url in datasources. Note: directUrl is read from DIRECT_URL env var
-  // by Prisma automatically (as defined in schema.prisma) — it CANNOT be overridden
-  // in the datasources object at runtime.
+  // Prisma handles Neon connections natively with the pooled url (DATABASE_URL)
+  // and direct url (DIRECT_URL) configured in schema.prisma datasource.
+  // No adapter needed — Prisma's built-in connection pooling works great with Neon.
   return new PrismaClient({
     log: process.env.NODE_ENV === 'development' ? ['warn', 'error'] : ['error'],
-    datasources: {
-      db: {
-        url: databaseUrl,
-      },
-    },
   })
 }
 
