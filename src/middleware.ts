@@ -5,6 +5,7 @@ import { getToken } from 'next-auth/jwt';
 // Public API routes that don't require authentication
 const PUBLIC_API_ROUTES = [
   '/api/auth',
+  '/api/health',
   '/api/events',
   '/api/pickup-points',
   '/api/queue-status',
