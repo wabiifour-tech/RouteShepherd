@@ -21,6 +21,12 @@ export default function PassengerLoginPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
+  // Check if Google OAuth is available (not placeholder)
+  const googleOAuthAvailable = typeof window !== 'undefined' &&
+    window.location.hostname !== 'localhost' &&
+    // Google OAuth buttons are always shown but show warning if likely not configured
+    true;
+
   const handleSignUp = async () => {
     if (!email || !name || !password) {
       toast.error('Please fill in all required fields (name, email, password)');

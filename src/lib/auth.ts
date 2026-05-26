@@ -4,131 +4,157 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { db } from '@/lib/db';
 
-export const authOptions: NextAuthOptions = {
-  providers: [
+// Only include Google provider if credentials are configured
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const providers: any[] = [];
+
+// Google OAuth - only if credentials are properly set (not placeholder)
+if (
+  process.env.GOOGLE_CLIENT_ID &&
+  process.env.GOOGLE_CLIENT_ID !== 'placeholder' &&
+  process.env.GOOGLE_CLIENT_SECRET &&
+  process.env.GOOGLE_CLIENT_SECRET !== 'placeholder'
+) {
+  providers.push(
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID || 'placeholder',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || 'placeholder',
-    }),
-    CredentialsProvider({
-      id: 'coordinator',
-      name: 'Coordinator Login',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error('Email and password are required');
-        }
+      clientId: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    })
+  );
+}
 
-        const user = await db.user.findUnique({
-          where: { email: credentials.email },
-        });
+// Coordinator credentials provider
+providers.push(
+  CredentialsProvider({
+    id: 'coordinator',
+    name: 'Coordinator Login',
+    credentials: {
+      email: { label: 'Email', type: 'email' },
+      password: { label: 'Password', type: 'password' },
+    },
+    async authorize(credentials) {
+      if (!credentials?.email || !credentials?.password) {
+        throw new Error('Email and password are required');
+      }
 
-        if (!user || user.role !== 'coordinator') {
-          throw new Error('Invalid coordinator credentials');
-        }
+      const user = await db.user.findUnique({
+        where: { email: credentials.email },
+      });
 
-        if (!user.passwordHash) {
-          throw new Error('Invalid coordinator credentials');
-        }
+      if (!user || user.role !== 'coordinator') {
+        throw new Error('Invalid coordinator credentials');
+      }
 
-        const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (!isValid) {
-          throw new Error('Invalid coordinator credentials');
-        }
+      if (!user.passwordHash) {
+        throw new Error('Invalid coordinator credentials');
+      }
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image,
-          role: user.role,
-          provider: user.provider,
-        };
-      },
-    }),
-    CredentialsProvider({
-      id: 'driver',
-      name: 'Driver Login',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        pin: { label: '6-Digit PIN', type: 'text' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.pin) {
-          throw new Error('Email and PIN are required');
-        }
+      const isValid = await bcrypt.compare(credentials.password, user.passwordHash);
+      if (!isValid) {
+        throw new Error('Invalid coordinator credentials');
+      }
 
-        const user = await db.user.findUnique({
-          where: { email: credentials.email },
-        });
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        image: user.image,
+        role: user.role,
+        provider: user.provider,
+      };
+    },
+  })
+);
 
-        if (!user || user.role !== 'driver') {
-          throw new Error('No driver account found with this email. Please contact your coordinator.');
-        }
+// Driver credentials provider (email + 6-digit PIN)
+providers.push(
+  CredentialsProvider({
+    id: 'driver',
+    name: 'Driver Login',
+    credentials: {
+      email: { label: 'Email', type: 'email' },
+      pin: { label: '6-Digit PIN', type: 'text' },
+    },
+    async authorize(credentials) {
+      if (!credentials?.email || !credentials?.pin) {
+        throw new Error('Email and PIN are required');
+      }
 
-        if (!user.pinHash) {
-          throw new Error('No PIN set for this driver. Please contact your coordinator to set up your PIN.');
-        }
+      const user = await db.user.findUnique({
+        where: { email: credentials.email },
+      });
 
-        const isValid = await bcrypt.compare(credentials.pin, user.pinHash);
-        if (!isValid) {
-          throw new Error('Invalid PIN. Please try again.');
-        }
+      if (!user || user.role !== 'driver') {
+        throw new Error('No driver account found with this email. Please contact your coordinator.');
+      }
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image,
-          role: user.role,
-          provider: user.provider,
-          driverPhone: user.driverPhone,
-        };
-      },
-    }),
-    CredentialsProvider({
-      id: 'passenger',
-      name: 'Passenger Login',
-      credentials: {
-        email: { label: 'Email', type: 'email' },
-        password: { label: 'Password', type: 'password' },
-      },
-      async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error('Email and password are required');
-        }
+      if (!user.pinHash) {
+        throw new Error('No PIN set for this driver. Please contact your coordinator to set up your PIN.');
+      }
 
-        const user = await db.user.findUnique({
-          where: { email: credentials.email },
-        });
+      const isValid = await bcrypt.compare(credentials.pin, user.pinHash);
+      if (!isValid) {
+        throw new Error('Invalid PIN. Please try again.');
+      }
 
-        if (!user || user.role !== 'passenger') {
-          throw new Error('No passenger account found with this email.');
-        }
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        image: user.image,
+        role: user.role,
+        provider: user.provider,
+        driverPhone: user.driverPhone,
+      };
+    },
+  })
+);
 
-        if (!user.password) {
-          throw new Error('This account was created with Google. Please sign in with Google instead.');
-        }
+// Passenger credentials provider (email + password)
+providers.push(
+  CredentialsProvider({
+    id: 'passenger',
+    name: 'Passenger Login',
+    credentials: {
+      email: { label: 'Email', type: 'email' },
+      password: { label: 'Password', type: 'password' },
+    },
+    async authorize(credentials) {
+      if (!credentials?.email || !credentials?.password) {
+        throw new Error('Email and password are required');
+      }
 
-        const isValid = await bcrypt.compare(credentials.password, user.password);
-        if (!isValid) {
-          throw new Error('Invalid email or password.');
-        }
+      const user = await db.user.findUnique({
+        where: { email: credentials.email },
+      });
 
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image,
-          role: user.role,
-          provider: user.provider,
-        };
-      },
-    }),
-  ],
+      if (!user || user.role !== 'passenger') {
+        throw new Error('No passenger account found with this email.');
+      }
+
+      if (!user.password) {
+        throw new Error('This account was created with Google. Please sign in with Google instead.');
+      }
+
+      const isValid = await bcrypt.compare(credentials.password, user.password);
+      if (!isValid) {
+        throw new Error('Invalid email or password.');
+      }
+
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        image: user.image,
+        role: user.role,
+        provider: user.provider,
+      };
+    },
+  })
+);
+
+export const authOptions: NextAuthOptions = {
+  providers,
   callbacks: {
     async signIn({ user, account }) {
       if (account?.provider === 'google') {
