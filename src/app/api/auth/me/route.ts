@@ -48,6 +48,7 @@ export async function GET() {
         provider: user.provider,
         driverPhone: user.driverPhone,
         assignedBuses: user.assignedBuses,
+        pinChangeRequired: user.pinChangeRequired,
       },
     });
   } catch (error) {

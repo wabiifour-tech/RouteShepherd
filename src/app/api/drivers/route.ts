@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { z } from 'zod/v4';
 import { requireCoordinator, requireAuth } from '@/lib/api-auth';
 import bcrypt from 'bcryptjs';
+import { generateRandomPin } from '@/lib/auth';
 
 export async function GET() {
   try {
@@ -39,7 +40,7 @@ const driverSchema = z.object({
   name: z.string().min(2, 'Driver name is required'),
   email: z.string().email('Valid email is required'),
   phone: z.string().min(1, 'Phone number is required'),
-  pin: z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits').default('123456'),
+  pin: z.string().regex(/^\d{6}$/, 'PIN must be exactly 6 digits').optional(), // Optional: auto-generated if not provided
   busId: z.string().optional(), // Assign to bus
 });
 
@@ -53,6 +54,9 @@ export async function POST(request: Request) {
 
     const body = await request.json();
     const { name, email, phone, pin, busId } = driverSchema.parse(body);
+
+    // Generate a unique random PIN if not provided
+    const assignedPin = pin || generateRandomPin();
 
     // Check if email already exists
     const existing = await db.user.findUnique({
@@ -68,9 +72,9 @@ export async function POST(request: Request) {
 
     // Hash the PIN
     const saltRounds = 10;
-    const pinHash = await bcrypt.hash(pin, saltRounds);
+    const pinHash = await bcrypt.hash(assignedPin, saltRounds);
 
-    // Create driver user with hashed PIN
+    // Create driver user with hashed PIN and pinChangeRequired = true
     const driver = await db.user.create({
       data: {
         email,
@@ -79,6 +83,7 @@ export async function POST(request: Request) {
         role: 'driver',
         provider: 'credentials',
         pinHash,
+        pinChangeRequired: true,
       },
     });
 
@@ -110,7 +115,7 @@ export async function POST(request: Request) {
       },
     });
 
-    return NextResponse.json(created, { status: 201 });
+    return NextResponse.json({ ...created, assignedPin }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(

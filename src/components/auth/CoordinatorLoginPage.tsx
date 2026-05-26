@@ -163,7 +163,7 @@ export default function CoordinatorLoginPage() {
               <Input
                 id="coord-email"
                 type="email"
-                placeholder="coordinator@routeshepherd.ng"
+                placeholder="Enter your email"
                 value={email}
                 onChange={(e) => { setEmail(e.target.value); setError(''); }}
                 disabled={submitting}
@@ -208,9 +208,6 @@ export default function CoordinatorLoginPage() {
             <div className="rounded-lg bg-muted/50 p-3">
               <p className="text-xs text-muted-foreground text-center">
                 Coordinators cannot sign up. If you need access, contact your system administrator.
-              </p>
-              <p className="text-xs text-muted-foreground text-center mt-1">
-                Default: coordinator@routeshepherd.ng / Shepherd@2026!
               </p>
             </div>
           </CardContent>

@@ -7,6 +7,7 @@ import { useTheme } from 'next-themes';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { signOut } from 'next-auth/react';
 
 const emptySubscribe = () => () => {};
 function useMounted() {
@@ -46,12 +47,16 @@ export default function NavBar() {
     }
   }
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setUser(null);
     localStorage.removeItem('rs_user');
     setCurrentView('landing');
-    // Also sign out from NextAuth if applicable
-    fetch('/api/auth/signout', { method: 'POST' }).catch(() => {});
+    // Properly sign out from NextAuth server-side
+    try {
+      await signOut({ redirect: false });
+    } catch {
+      // Ignore sign-out errors
+    }
   };
 
   return (

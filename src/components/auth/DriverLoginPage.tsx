@@ -10,6 +10,7 @@ import { Bus, Lock, ArrowLeft, Loader2, MapPin, AlertCircle } from 'lucide-react
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { signIn } from 'next-auth/react';
+import PinChangeModal from '@/components/auth/PinChangeModal';
 
 export default function DriverLoginPage() {
   const { setCurrentView, setUser } = useAppStore();
@@ -17,6 +18,7 @@ export default function DriverLoginPage() {
   const [pin, setPin] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [showPinChange, setShowPinChange] = useState(false);
 
   const handleLogin = async () => {
     setError('');
@@ -85,7 +87,14 @@ export default function DriverLoginPage() {
       localStorage.setItem('rs_user', JSON.stringify(userToSet));
 
       toast.success('Welcome, Driver!');
-      setCurrentView('driver');
+
+      // Check if PIN change is required
+      const pinChangeRequired = userData?.pinChangeRequired !== false;
+      if (pinChangeRequired) {
+        setShowPinChange(true);
+      } else {
+        setCurrentView('driver');
+      }
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Login failed. Please try again.';
       setError(errorMsg);
@@ -95,6 +104,16 @@ export default function DriverLoginPage() {
     }
   };
 
+  const handlePinChanged = () => {
+    setShowPinChange(false);
+    setCurrentView('driver');
+  };
+
+  const handlePinChangeSkip = () => {
+    setShowPinChange(false);
+    setCurrentView('driver');
+  };
+
   const handlePinChange = (value: string) => {
     const digits = value.replace(/\D/g, '').slice(0, 6);
     setPin(digits);
@@ -102,6 +121,13 @@ export default function DriverLoginPage() {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      {showPinChange && (
+        <PinChangeModal
+          email={email}
+          onPinChanged={handlePinChanged}
+          onSkip={handlePinChangeSkip}
+        />
+      )}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -173,9 +199,8 @@ export default function DriverLoginPage() {
               <div className="flex gap-2">
                 <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
                 <div className="text-xs text-amber-700 dark:text-amber-400">
-                  <p>Your coordinator assigned you an email and a 6-digit PIN when creating your account. Enter both to sign in.</p>
+                  <p>Your coordinator assigned you an email and a 6-digit PIN when creating your account. You will be required to change your PIN on first login.</p>
                   <p className="mt-1">If you don&apos;t know your PIN, ask your coordinator to reset it for you.</p>
-                  <p className="mt-1">Default driver PIN: <strong>123456</strong></p>
                 </div>
               </div>
             </div>

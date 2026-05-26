@@ -138,16 +138,13 @@ function generateDriverEmail(name: string, index: number): string {
 async function main() {
   console.log("🌱 Seeding database...");
 
-  // Clean up existing data
-  await prisma.preRegistration.deleteMany();
-  await prisma.notification.deleteMany();
-  await prisma.demandForecast.deleteMany();
-  await prisma.queueEntry.deleteMany();
-  await prisma.bus.deleteMany();
-  await prisma.route.deleteMany();
-  await prisma.pickupPoint.deleteMany();
-  await prisma.event.deleteMany();
-  await prisma.user.deleteMany();
+  // Clean up existing data (use raw SQL to avoid issues with non-existent tables)
+  try {
+    await prisma.$executeRawUnsafe(`TRUNCATE TABLE "PreRegistration", "Notification", "DemandForecast", "QueueEntry", "Bus", "Route", "PickupPoint", "Event", "User" CASCADE;`);
+  } catch {
+    // Tables might not exist yet on fresh database, that's OK
+    console.log("   ℹ️ Tables empty or not yet created, proceeding with seed...");
+  }
 
   // 1. Create Coordinator Users
   console.log("👤 Creating coordinator accounts...");
@@ -177,11 +174,15 @@ async function main() {
 
   console.log(`   ✅ Created 2 coordinator accounts`);
 
-  // 2. Create Driver Users (with hashed PINs)
+  // 2. Create Driver Users (with unique hashed PINs)
   console.log("🚗 Creating driver accounts with PINs...");
   const driverUsers: User[] = [];
-  const defaultPinHash = await bcrypt.hash('123456', saltRounds);
+  const driverPins: string[] = []; // Store plaintext PINs for display only during seed
   for (let i = 0; i < driverNames.length; i++) {
+    // Generate a unique random 6-digit PIN for each driver
+    const driverPin = String(Math.floor(100000 + Math.random() * 900000));
+    driverPins.push(driverPin);
+    const driverPinHash = await bcrypt.hash(driverPin, saltRounds);
     const driver = await prisma.user.create({
       data: {
         email: generateDriverEmail(driverNames[i], i),
@@ -189,12 +190,18 @@ async function main() {
         role: 'driver',
         provider: 'credentials',
         driverPhone: driverPhones[i % driverPhones.length],
-        pinHash: defaultPinHash,
+        pinHash: driverPinHash,
+        pinChangeRequired: true, // Force PIN change on first login
       },
     });
     driverUsers.push(driver);
   }
-  console.log(`   ✅ Created ${driverUsers.length} driver accounts (default PIN: 123456)`);
+  console.log(`   ✅ Created ${driverUsers.length} driver accounts (each with unique PIN, must change on first login)`);
+  // Print first 3 driver PINs for testing purposes only
+  console.log(`   📋 Sample driver PINs (for testing):`);
+  for (let i = 0; i < Math.min(3, driverUsers.length); i++) {
+    console.log(`      ${driverUsers[i].email} → PIN: ${driverPins[i]}`);
+  }
 
   // 3. Create Events
   console.log("📅 Creating events...");
@@ -387,12 +394,13 @@ async function main() {
   }
 
   // 11. Create Sample Passenger Users (with passwords)
+  // NOTE: These are for development/testing ONLY. Remove before production.
   console.log("👤 Creating sample passenger accounts...");
   const samplePassengers = [
-    { email: "adebayo.j@example.com", name: "Adebayo Johnson", password: "Passenger@1" },
-    { email: "chioma.n@example.com", name: "Chioma Nwosu", password: "Passenger@2" },
-    { email: "ibrahim.g@example.com", name: "Ibrahim Garba", password: "Passenger@3" },
-    { email: "funke.a@example.com", name: "Funke Adeyemi", password: "Passenger@4" },
+    { email: "adebayo.j@example.com", name: "Adebayo Johnson", password: await bcrypt.hash("Passenger@1", saltRounds) },
+    { email: "chioma.n@example.com", name: "Chioma Nwosu", password: await bcrypt.hash("Passenger@2", saltRounds) },
+    { email: "ibrahim.g@example.com", name: "Ibrahim Garba", password: await bcrypt.hash("Passenger@3", saltRounds) },
+    { email: "funke.a@example.com", name: "Funke Adeyemi", password: await bcrypt.hash("Passenger@4", saltRounds) },
   ];
 
   for (const p of samplePassengers) {
@@ -402,14 +410,15 @@ async function main() {
         name: p.name,
         role: 'passenger',
         provider: 'credentials',
-        password: await bcrypt.hash(p.password, saltRounds),
+        password: p.password,
+        pinChangeRequired: false,
       },
     });
   }
 
   console.log(`✅ Seed completed! Created:`);
   console.log(`   - 2 Coordinator Users (coordinator@routeshepherd.ng / admin@routeshepherd.ng)`);
-  console.log(`   - ${driverUsers.length} Driver Users (default PIN: 123456)`);
+  console.log(`   - ${driverUsers.length} Driver Users (unique PINs, must change on first login)`);
   console.log(`   - ${samplePassengers.length} Sample Passenger Users`);
   console.log(`   - 2 Events`);
   console.log(`   - ${createdPickupPoints.length + 1} Pickup Points (including Redemption City)`);

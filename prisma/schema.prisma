@@ -21,11 +21,16 @@ model User {
   passwordHash  String?  // hashed password for coordinators
 
   // Driver-specific
-  driverPhone   String?
-  pinHash       String?  // hashed 6-digit PIN for drivers
+  driverPhone       String?
+  pinHash           String?  // hashed 6-digit PIN for drivers
+  pinChangeRequired Boolean  @default(true) // force PIN change on first login
 
   // Passenger-specific
   password      String?  // hashed password for passengers who sign up with email
+
+  // Security fields
+  loginAttempts Int       @default(0)    // track failed login attempts
+  lockedUntil   DateTime?               // account lockout timestamp
 
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
