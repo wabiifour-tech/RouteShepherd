@@ -1,0 +1,87 @@
+{
+  "name": "RouteShepherd - Intelligent Transit Coordination",
+  "short_name": "RouteShepherd",
+  "description": "AI-powered transit coordination for Redemption City events. 300+ buses, 17 pickup points, 5M+ attendees.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["transportation", "navigation", "travel", "productivity"],
+  "theme_color": "#1B5E20",
+  "background_color": "#ffffff",
+  "prefer_related_applications": false,
+  "icons": [
+    {
+      "src": "/pwa-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/pwa-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/maskable-icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/maskable-icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/logo-premium.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "form_factor": "narrow"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Track My Bus",
+      "short_name": "Track",
+      "description": "Track your assigned bus in real-time",
+      "url": "/?view=passenger",
+      "icons": [
+        {
+          "src": "/pwa-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Coordinator Dashboard",
+      "short_name": "Dashboard",
+      "description": "Manage buses, routes, and dispatch",
+      "url": "/?view=coordinator",
+      "icons": [
+        {
+          "src": "/pwa-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Driver Portal",
+      "short_name": "Driver",
+      "description": "View assignments and report location",
+      "url": "/?view=driver",
+      "icons": [
+        {
+          "src": "/pwa-192x192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ]
+}
