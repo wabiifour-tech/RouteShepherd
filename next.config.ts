@@ -1,10 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   typescript: {
     ignoreBuildErrors: false,
   },
-  reactStrictMode: true,
+  reactStrictMode: false,
   serverExternalPackages: ['bcryptjs'],
   // Turbopack config for Next.js 16 compatibility
   turbopack: {},
