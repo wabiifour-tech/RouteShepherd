@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Bus, Lock, Mail, ArrowLeft, Loader2, Shield } from 'lucide-react';
+import { Lock, ArrowLeft, Loader2, Shield } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { signIn } from 'next-auth/react';
@@ -20,6 +20,7 @@ export default function CoordinatorLoginPage() {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   // Load saved email on mount (NOT password)
   useEffect(() => {
@@ -28,7 +29,6 @@ export default function CoordinatorLoginPage() {
       if (saved) {
         const data = JSON.parse(saved);
         if (data.email) setEmail(data.email);
-        // Only store email - password must be re-entered each time
         setRememberMe(true);
       }
     } catch {
@@ -37,24 +37,18 @@ export default function CoordinatorLoginPage() {
   }, []);
 
   const handleLogin = async () => {
+    // Clear previous errors
+    setError('');
+
     if (!email || !password) {
+      setError('Please enter both email and password');
       toast.error('Please enter both email and password');
       return;
     }
+
     setSubmitting(true);
     try {
-      // First validate credentials via our API
-      const res = await fetch('/api/auth/coordinator-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Login failed');
-      }
-
-      // Establish NextAuth session
+      // Use NextAuth credentials provider directly for coordinator
       const result = await signIn('coordinator', {
         email,
         password,
@@ -62,7 +56,32 @@ export default function CoordinatorLoginPage() {
       });
 
       if (result?.error) {
-        throw new Error(result.error);
+        const errorMsg = result.error === 'CredentialsSignin'
+          ? 'Invalid email or password. Please check your credentials and try again.'
+          : result.error;
+        setError(errorMsg);
+        toast.error(errorMsg);
+        return;
+      }
+
+      // NextAuth session established - get user data from session
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let userData: any = null;
+      try {
+        const meRes = await fetch('/api/auth/me');
+        const meData = await meRes.json();
+        if (meData.authenticated && meData.user) {
+          userData = meData.user;
+        }
+      } catch {
+        // Fallback: use the email we have
+        userData = {
+          id: '',
+          email,
+          name: 'Coordinator',
+          role: 'coordinator',
+          provider: 'credentials',
+        };
       }
 
       // Save or clear remember me (email only, NOT password)
@@ -72,28 +91,25 @@ export default function CoordinatorLoginPage() {
         localStorage.removeItem(REMEMBER_KEY);
       }
 
-      setUser({
-        id: data.id,
-        email: data.email,
-        name: data.name,
-        image: null,
-        role: 'coordinator',
+      // Set user in store
+      const userToSet = {
+        id: userData?.id || '',
+        email: userData?.email || email,
+        name: userData?.name || null,
+        image: userData?.image || null,
+        role: 'coordinator' as const,
         phone: null,
         provider: 'credentials',
-      });
-      localStorage.setItem('rs_user', JSON.stringify({
-        id: data.id,
-        email: data.email,
-        name: data.name,
-        image: null,
-        role: 'coordinator',
-        phone: null,
-        provider: 'credentials',
-      }));
+      };
+      setUser(userToSet);
+      localStorage.setItem('rs_user', JSON.stringify(userToSet));
+
       toast.success('Welcome back, Coordinator!');
       setCurrentView('coordinator');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Login failed');
+      const errorMsg = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setSubmitting(false);
     }
@@ -137,6 +153,11 @@ export default function CoordinatorLoginPage() {
             <CardDescription>Enter your coordinator credentials</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {error && (
+              <div className="rounded-lg bg-red-50 dark:bg-red-900/20 p-3 border border-red-200 dark:border-red-800">
+                <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+              </div>
+            )}
             <div>
               <Label htmlFor="coord-email">Email</Label>
               <Input
@@ -144,7 +165,8 @@ export default function CoordinatorLoginPage() {
                 type="email"
                 placeholder="coordinator@routeshepherd.ng"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                disabled={submitting}
               />
             </div>
             <div>
@@ -154,8 +176,9 @@ export default function CoordinatorLoginPage() {
                 type="password"
                 placeholder="Enter your password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                onChange={(e) => { setPassword(e.target.value); setError(''); }}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !submitting) handleLogin(); }}
+                disabled={submitting}
               />
             </div>
             <div className="flex items-center gap-2">
@@ -172,6 +195,7 @@ export default function CoordinatorLoginPage() {
               className="w-full bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90 h-12"
               onClick={handleLogin}
               disabled={submitting}
+              type="button"
             >
               {submitting ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -184,6 +208,9 @@ export default function CoordinatorLoginPage() {
             <div className="rounded-lg bg-muted/50 p-3">
               <p className="text-xs text-muted-foreground text-center">
                 Coordinators cannot sign up. If you need access, contact your system administrator.
+              </p>
+              <p className="text-xs text-muted-foreground text-center mt-1">
+                Default: coordinator@routeshepherd.ng / Shepherd@2026!
               </p>
             </div>
           </CardContent>

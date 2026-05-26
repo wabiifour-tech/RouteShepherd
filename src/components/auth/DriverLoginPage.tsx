@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Bus, Lock, Mail, ArrowLeft, Loader2, MapPin, AlertCircle } from 'lucide-react';
+import { Bus, Lock, ArrowLeft, Loader2, MapPin, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { signIn } from 'next-auth/react';
@@ -16,30 +16,25 @@ export default function DriverLoginPage() {
   const [email, setEmail] = useState('');
   const [pin, setPin] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const handleLogin = async () => {
+    setError('');
+
     if (!email) {
+      setError('Please enter your email');
       toast.error('Please enter your email');
       return;
     }
     if (!pin || pin.length !== 6) {
+      setError('Please enter your 6-digit PIN');
       toast.error('Please enter your 6-digit PIN');
       return;
     }
+
     setSubmitting(true);
     try {
-      // First validate credentials via our API
-      const res = await fetch('/api/auth/driver-login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, pin }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Login failed');
-      }
-
-      // Establish NextAuth session
+      // Use NextAuth credentials provider directly for driver
       const result = await signIn('driver', {
         email,
         pin,
@@ -47,42 +42,60 @@ export default function DriverLoginPage() {
       });
 
       if (result?.error) {
-        throw new Error(result.error);
+        const errorMsg = result.error === 'CredentialsSignin'
+          ? 'Invalid email or PIN. Please check your credentials and try again.'
+          : result.error;
+        setError(errorMsg);
+        toast.error(errorMsg);
+        return;
       }
 
-      setUser({
-        id: data.id,
-        email: data.email,
-        name: data.name,
-        image: null,
-        role: 'driver',
+      // Get full user data from /api/auth/me
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let userData: any = null;
+      try {
+        const meRes = await fetch('/api/auth/me');
+        const meData = await meRes.json();
+        if (meData.authenticated && meData.user) {
+          userData = meData.user;
+        }
+      } catch {
+        // Fallback
+        userData = {
+          id: '',
+          email,
+          name: 'Driver',
+          role: 'driver',
+          provider: 'credentials',
+        };
+      }
+
+      const userToSet = {
+        id: userData?.id || '',
+        email: userData?.email || email,
+        name: userData?.name || null,
+        image: userData?.image || null,
+        role: 'driver' as const,
         phone: null,
         provider: 'credentials',
-        driverPhone: data.driverPhone,
-        assignedBuses: data.assignedBuses,
-      });
-      localStorage.setItem('rs_user', JSON.stringify({
-        id: data.id,
-        email: data.email,
-        name: data.name,
-        image: null,
-        role: 'driver',
-        phone: null,
-        provider: 'credentials',
-        driverPhone: data.driverPhone,
-        assignedBuses: data.assignedBuses,
-      }));
+        driverPhone: userData?.driverPhone || null,
+        assignedBuses: userData?.assignedBuses || [],
+      };
+      setUser(userToSet);
+      localStorage.setItem('rs_user', JSON.stringify(userToSet));
+
       toast.success('Welcome, Driver!');
       setCurrentView('driver');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Login failed');
+      const errorMsg = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      setError(errorMsg);
+      toast.error(errorMsg);
     } finally {
       setSubmitting(false);
     }
   };
 
   const handlePinChange = (value: string) => {
-    // Only allow digits, max 6
     const digits = value.replace(/\D/g, '').slice(0, 6);
     setPin(digits);
   };
@@ -125,6 +138,11 @@ export default function DriverLoginPage() {
             <CardDescription>Enter the email and PIN assigned by your coordinator</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
+            {error && (
+              <div className="rounded-lg bg-red-50 dark:bg-red-900/20 p-3 border border-red-200 dark:border-red-800">
+                <p className="text-sm text-red-700 dark:text-red-400">{error}</p>
+              </div>
+            )}
             <div>
               <Label htmlFor="driver-email">Email Address</Label>
               <Input
@@ -132,7 +150,8 @@ export default function DriverLoginPage() {
                 type="email"
                 placeholder="driver@example.com"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => { setEmail(e.target.value); setError(''); }}
+                disabled={submitting}
               />
             </div>
             <div>
@@ -143,9 +162,10 @@ export default function DriverLoginPage() {
                 inputMode="numeric"
                 placeholder="Enter your 6-digit PIN"
                 value={pin}
-                onChange={(e) => handlePinChange(e.target.value)}
+                onChange={(e) => { handlePinChange(e.target.value); setError(''); }}
                 maxLength={6}
-                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !submitting) handleLogin(); }}
+                disabled={submitting}
               />
             </div>
 
@@ -155,6 +175,7 @@ export default function DriverLoginPage() {
                 <div className="text-xs text-amber-700 dark:text-amber-400">
                   <p>Your coordinator assigned you an email and a 6-digit PIN when creating your account. Enter both to sign in.</p>
                   <p className="mt-1">If you don&apos;t know your PIN, ask your coordinator to reset it for you.</p>
+                  <p className="mt-1">Default driver PIN: <strong>123456</strong></p>
                 </div>
               </div>
             </div>
@@ -163,6 +184,7 @@ export default function DriverLoginPage() {
               className="w-full bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90 h-12"
               onClick={handleLogin}
               disabled={submitting}
+              type="button"
             >
               {submitting ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
