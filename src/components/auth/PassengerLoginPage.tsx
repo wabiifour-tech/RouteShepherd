@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Bus, Users, Mail, Lock, ArrowLeft, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import { Bus, Users, Mail, Lock, ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
 import { signIn } from 'next-auth/react';
@@ -26,7 +26,7 @@ export default function PassengerLoginPage() {
     setError('');
     if (!email || !name || !password) {
       setError('Please fill in all required fields (name, email, password)');
-      toast.error('Please fill in all required fields (name, email, password)');
+      toast.error('Please fill in all required fields');
       return;
     }
     if (password.length < 6) {
@@ -41,7 +41,6 @@ export default function PassengerLoginPage() {
     }
     setSubmitting(true);
     try {
-      // Create the account via signup API
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -52,7 +51,6 @@ export default function PassengerLoginPage() {
         throw new Error(data.error || 'Sign up failed');
       }
 
-      // Establish NextAuth session with the new credentials
       const result = await signIn('passenger', {
         email,
         password,
@@ -60,7 +58,6 @@ export default function PassengerLoginPage() {
       });
 
       if (result?.error) {
-        // Account was created but session failed - still log them in locally
         console.warn('Session creation failed after signup:', result.error);
       }
 
@@ -95,7 +92,6 @@ export default function PassengerLoginPage() {
     }
     setSubmitting(true);
     try {
-      // Sign in via NextAuth credentials provider
       const result = await signIn('passenger', {
         email,
         password,
@@ -111,7 +107,6 @@ export default function PassengerLoginPage() {
         return;
       }
 
-      // Get user data from NextAuth session
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let userData: any = null;
       try {
@@ -137,7 +132,6 @@ export default function PassengerLoginPage() {
         setUser(userToSet);
         localStorage.setItem('rs_user', JSON.stringify(userToSet));
       } else {
-        // Fallback
         const userToSet = {
           id: '',
           email,
@@ -162,7 +156,7 @@ export default function PassengerLoginPage() {
     }
   };
 
-  const handleGoogleSignUp = () => {
+  const handleGoogleSignIn = () => {
     const callbackUrl = encodeURIComponent(window.location.origin);
     window.location.href = `/api/auth/signin/google?callbackUrl=${callbackUrl}`;
   };
@@ -189,7 +183,7 @@ export default function PassengerLoginPage() {
             </div>
           </div>
           <h1 className="text-2xl font-bold">
-            Passenger <span className="text-[#1B5E20]">Portal</span>
+            Passenger <span className="text-[#1B5E20]">Login</span>
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
             Sign in to pre-register your trip and track buses
@@ -201,7 +195,7 @@ export default function PassengerLoginPage() {
             <CardContent className="p-6 space-y-4">
               <Button
                 className="w-full bg-white text-gray-800 hover:bg-gray-100 border border-gray-300 h-12"
-                onClick={handleGoogleSignUp}
+                onClick={handleGoogleSignIn}
                 type="button"
               >
                 <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
@@ -229,7 +223,7 @@ export default function PassengerLoginPage() {
                 type="button"
               >
                 <Mail className="mr-2 h-4 w-4" />
-                Sign Up with Email
+                Create Account
               </Button>
 
               <Button
@@ -241,17 +235,6 @@ export default function PassengerLoginPage() {
                 <Lock className="mr-2 h-4 w-4" />
                 Sign In with Email
               </Button>
-
-              <div className="mt-4 rounded-lg bg-muted/50 p-3">
-                <div className="flex gap-2">
-                  <AlertCircle className="h-4 w-4 text-[#F9A825] mt-0.5 shrink-0" />
-                  <div className="text-xs text-muted-foreground">
-                    <p className="font-medium text-foreground mb-1">Sign Up vs Sign In:</p>
-                    <p><strong>Sign Up</strong> — Create a new account with email and password. First time here? This is for you.</p>
-                    <p className="mt-1"><strong>Sign In</strong> — Already have an account? Enter your email and password to log back in.</p>
-                  </div>
-                </div>
-              </div>
             </CardContent>
           </Card>
         )}
