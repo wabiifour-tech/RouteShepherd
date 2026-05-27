@@ -91,7 +91,7 @@ export default function LandingView() {
               <img src="/logo-3d-premium.png" alt="RouteShepherd" className="h-20 w-20 rounded-2xl shadow-2xl ring-2 ring-[#F9A825]/30" />
               <div>
                 <Badge className="mb-2 border-[#F9A825]/30 bg-[#F9A825]/10 text-[#F9A825] hover:bg-[#F9A825]/20">
-                  Kingdom Hack 3.0
+                  Developed by Wabi The Tech Nurse
                 </Badge>
                 <h1 className="text-4xl font-extrabold tracking-tight text-white sm:text-5xl lg:text-6xl">
                   Route<span className="text-[#F9A825]">Shepherd</span>
@@ -421,7 +421,7 @@ export default function LandingView() {
               <span className="font-bold text-[#1B5E20] dark:text-[#4CAF50]">RouteShepherd</span>
             </div>
             <p className="text-sm text-muted-foreground">
-              Built for Kingdom Hack 3.0 — AI-Powered Transit Coordination for Redemption City
+Developed by Wabi The Tech Nurse
             </p>
           </div>
         </div>

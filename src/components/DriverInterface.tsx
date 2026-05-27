@@ -228,54 +228,14 @@ export default function DriverInterface() {
           }
         },
         async () => {
-          // Fallback: simulate GPS update with slight random movement
-          const newLat = (selectedBus.latitude || 6.5) + (Math.random() - 0.5) * 0.005;
-          const newLng = (selectedBus.longitude || 3.4) + (Math.random() - 0.5) * 0.005;
-          setUpdating(true);
-          try {
-            const res = await fetch('/api/driver-location', {
-              method: 'PATCH',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                busId: selectedBusId,
-                latitude: newLat,
-                longitude: newLng,
-              }),
-            });
-            if (!res.ok) throw new Error('Update failed');
-            toast.success('Location updated (simulated)');
-            loadData();
-          } catch {
-            toast.error('Failed to update location');
-          } finally {
-            setUpdating(false);
-          }
+          // GPS denied or unavailable — do NOT write fake data
+          toast.error('GPS unavailable. Please enable location services to update your bus position.');
         },
         { enableHighAccuracy: true, timeout: 10000 }
       );
     } else {
-      // No geolocation - simulate
-      const newLat = (selectedBus.latitude || 6.5) + (Math.random() - 0.5) * 0.005;
-      const newLng = (selectedBus.longitude || 3.4) + (Math.random() - 0.5) * 0.005;
-      setUpdating(true);
-      try {
-        const res = await fetch('/api/driver-location', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            busId: selectedBusId,
-            latitude: newLat,
-            longitude: newLng,
-          }),
-        });
-        if (!res.ok) throw new Error('Update failed');
-        toast.success('Location updated (simulated)');
-        loadData();
-      } catch {
-        toast.error('Failed to update location');
-      } finally {
-        setUpdating(false);
-      }
+      // No geolocation API — do NOT write fake data
+      toast.error('Your browser does not support geolocation. Location update is not available.');
     }
   };
 

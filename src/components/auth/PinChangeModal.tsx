@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Lock, Loader2, AlertTriangle, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { useAppStore } from '@/lib/store';
 
 interface PinChangeModalProps {
   email: string;
@@ -14,6 +15,7 @@ interface PinChangeModalProps {
 }
 
 export default function PinChangeModal({ email, onPinChanged }: PinChangeModalProps) {
+  const { user, setUser } = useAppStore();
   const [currentPin, setCurrentPin] = useState('');
   const [newPin, setNewPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -54,6 +56,12 @@ export default function PinChangeModal({ email, onPinChanged }: PinChangeModalPr
       }
 
       toast.success('PIN changed successfully!');
+      // Update the store so pinChangeRequired is false, preventing re-prompt on reload
+      if (user) {
+        const updatedUser = { ...user, pinChangeRequired: false };
+        setUser(updatedUser);
+        localStorage.setItem('rs_user', JSON.stringify(updatedUser));
+      }
       onPinChanged();
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'PIN change failed';

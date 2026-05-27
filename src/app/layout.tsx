@@ -35,7 +35,7 @@ export const metadata: Metadata = {
   metadataBase: new URL("https://routeshepherd.vercel.app"),
   title: "RouteShepherd - Intelligent Transit Coordination",
   description:
-    "AI-powered intelligent transit coordination platform for Redemption City, Nigeria. Coordinating 300+ buses across 17 pickup points for RCCG events.",
+    "Intelligent transit coordination platform for Redemption City, Nigeria. Real-time bus tracking, fleet management, and trip pre-registration.",
   keywords: [
     "RouteShepherd",
     "Redemption City",

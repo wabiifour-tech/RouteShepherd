@@ -85,6 +85,12 @@ export default function CoordinatorDashboard() {
   const [driverPin, setDriverPin] = useState('');
   const [savingDriver, setSavingDriver] = useState(false);
 
+  // Bus creation
+  const [addingBus, setAddingBus] = useState(false);
+  const [newBusPlate, setNewBusPlate] = useState('');
+  const [newBusCapacity, setNewBusCapacity] = useState('50');
+  const [savingBus, setSavingBus] = useState(false);
+
   // Active tab
   const [activeTab, setActiveTab] = useState('demand');
 
@@ -114,7 +120,7 @@ export default function CoordinatorDashboard() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 5000); // Auto-refresh every 5 seconds
+    const interval = setInterval(loadData, 15000); // Auto-refresh every 15 seconds
     return () => clearInterval(interval);
   }, [loadData]);
 
@@ -266,7 +272,7 @@ export default function CoordinatorDashboard() {
             name: driverName,
             email: driverEmail,
             phone: driverPhone,
-            busId: driverBusId || null,
+            busId: driverBusId === '__none__' ? null : driverBusId || null,
           }),
         });
         if (!res.ok) {
@@ -311,6 +317,38 @@ export default function CoordinatorDashboard() {
       loadData();
     } catch {
       toast.error('Failed to remove driver');
+    }
+  };
+
+  const handleAddBus = async () => {
+    if (!newBusPlate.trim()) {
+      toast.error('Please enter a plate number');
+      return;
+    }
+    if (!newBusCapacity || parseInt(newBusCapacity) < 1) {
+      toast.error('Please enter a valid capacity');
+      return;
+    }
+    setSavingBus(true);
+    try {
+      const res = await fetch('/api/buses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plateNumber: newBusPlate.trim(), capacity: parseInt(newBusCapacity) }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Failed to add bus');
+      }
+      toast.success(`Bus ${newBusPlate.trim()} added to fleet`);
+      setAddingBus(false);
+      setNewBusPlate('');
+      setNewBusCapacity('50');
+      loadData();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to add bus');
+    } finally {
+      setSavingBus(false);
     }
   };
 
@@ -389,7 +427,7 @@ export default function CoordinatorDashboard() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <CardTitle className="flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-[#1B5E20]" />
-                    AI Demand Forecast
+                    Demand Forecast
                   </CardTitle>
                   <Select value={forecastPickupPoint} onValueChange={setForecastPickupPoint}>
                     <SelectTrigger className="w-[200px]">
@@ -449,10 +487,40 @@ export default function CoordinatorDashboard() {
           <TabsContent value="fleet">
             <Card className="shadow-lg">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Bus className="h-5 w-5 text-[#1B5E20]" />
-                  Fleet Status Grid
-                </CardTitle>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="flex items-center gap-2">
+                    <Bus className="h-5 w-5 text-[#1B5E20]" />
+                    Fleet Management
+                  </CardTitle>
+                  <Dialog open={!!addingBus} onOpenChange={(open) => !open && setAddingBus(false)}>
+                    <Button className="bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90" onClick={() => { setNewBusPlate(''); setNewBusCapacity('50'); setAddingBus(true); }}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Bus
+                    </Button>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Add New Bus</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4 py-4">
+                        <div>
+                          <Label>Plate Number *</Label>
+                          <Input placeholder="e.g., LSR-123AB" value={newBusPlate} onChange={(e) => setNewBusPlate(e.target.value)} />
+                        </div>
+                        <div>
+                          <Label>Capacity *</Label>
+                          <Input type="number" placeholder="e.g., 50" value={newBusCapacity} onChange={(e) => setNewBusCapacity(e.target.value)} />
+                        </div>
+                      </div>
+                      <DialogFooter>
+                        <Button variant="outline" onClick={() => setAddingBus(false)}>Cancel</Button>
+                        <Button className="bg-[#1B5E20] text-white hover:bg-[#1B5E20]/90" onClick={handleAddBus} disabled={savingBus}>
+                          {savingBus && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Add Bus
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
