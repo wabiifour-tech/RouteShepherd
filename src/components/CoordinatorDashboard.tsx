@@ -96,13 +96,15 @@ export default function CoordinatorDashboard() {
 
   const loadData = useCallback(async () => {
     try {
+      // Add cache-busting timestamp to ensure fresh data
+      const t = Date.now();
       const [busesRes, routesRes, ppRes, forecastsRes, notifsRes, driversRes] = await Promise.all([
-        fetch('/api/buses'),
-        fetch('/api/routes'),
-        fetch('/api/pickup-points'),
-        fetch('/api/demand-forecasts'),
-        fetch('/api/notifications'),
-        fetch('/api/drivers'),
+        fetch(`/api/buses?t=${t}`),
+        fetch(`/api/routes?t=${t}`),
+        fetch(`/api/pickup-points?t=${t}`),
+        fetch(`/api/demand-forecasts?t=${t}`),
+        fetch(`/api/notifications?t=${t}`),
+        fetch(`/api/drivers?t=${t}`),
       ]);
       setBuses(await busesRes.json());
       setRoutes(await routesRes.json());
@@ -120,7 +122,7 @@ export default function CoordinatorDashboard() {
 
   useEffect(() => {
     loadData();
-    const interval = setInterval(loadData, 15000); // Auto-refresh every 15 seconds
+    const interval = setInterval(loadData, 10000); // Auto-refresh every 10 seconds for real-time updates
     return () => clearInterval(interval);
   }, [loadData]);
 

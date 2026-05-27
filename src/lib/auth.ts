@@ -132,7 +132,7 @@ providers.push(
         name: user.name,
         image: user.image,
         role: user.role,
-        provider: user.provider,
+        provider: user.provider || 'credentials',
       };
     },
   })
@@ -185,7 +185,7 @@ providers.push(
         name: user.name,
         image: user.image,
         role: user.role,
-        provider: user.provider,
+        provider: user.provider || 'credentials',
         driverPhone: user.driverPhone,
         pinChangeRequired: user.pinChangeRequired,
       };
@@ -240,7 +240,7 @@ providers.push(
         name: user.name,
         image: user.image,
         role: user.role,
-        provider: user.provider,
+        provider: user.provider || 'credentials',
       };
     },
   })
@@ -256,6 +256,7 @@ export const authOptions: NextAuthOptions = {
         });
 
         if (!existingUser) {
+          // Create new passenger account for Google sign-in
           await db.user.create({
             data: {
               email: user.email!,
@@ -266,6 +267,14 @@ export const authOptions: NextAuthOptions = {
               pinChangeRequired: false,
             },
           });
+        } else {
+          // Update the existing user's image if they signed in with Google
+          if (user.image && existingUser.provider === 'google') {
+            await db.user.update({
+              where: { email: user.email! },
+              data: { image: user.image },
+            });
+          }
         }
         return true;
       }
@@ -273,11 +282,21 @@ export const authOptions: NextAuthOptions = {
     },
     async jwt({ token, user }) {
       if (user) {
-        token.role = (user as { role?: string }).role || 'passenger';
-        token.provider = (user as { provider?: string }).provider || 'google';
-        token.dbId = user.id;
-        // Pass pinChangeRequired for drivers
-        token.pinChangeRequired = (user as { pinChangeRequired?: boolean }).pinChangeRequired || false;
+        // For Google OAuth, we need to fetch the role from the DB since Google doesn't provide it
+        if (token.email && !token.role) {
+          const dbUser = await db.user.findUnique({
+            where: { email: token.email },
+          });
+          token.role = dbUser?.role || 'passenger';
+          token.provider = dbUser?.provider || 'google';
+          token.dbId = dbUser?.id || user.id;
+          token.pinChangeRequired = dbUser?.pinChangeRequired || false;
+        } else {
+          token.role = (user as { role?: string }).role || 'passenger';
+          token.provider = (user as { provider?: string }).provider || 'google';
+          token.dbId = user.id;
+          token.pinChangeRequired = (user as { pinChangeRequired?: boolean }).pinChangeRequired || false;
+        }
       }
       return token;
     },
@@ -290,14 +309,18 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
-  },
-  pages: {
-    signIn: '/',
-    error: '/',
+    async redirect({ url, baseUrl }) {
+      // After successful authentication, always redirect to the home page
+      // The home page (page.tsx) will handle redirecting to the correct dashboard
+      // based on the user's role from the session
+      if (url.startsWith('/')) return `${baseUrl}${url}`;
+      if (url.startsWith(baseUrl)) return baseUrl;
+      return baseUrl;
+    },
   },
   session: {
     strategy: 'jwt',
-    maxAge: 8 * 60 * 60, // 8 hours (reduced from 24 for security)
+    maxAge: 8 * 60 * 60, // 8 hours
   },
   secret: process.env.NEXTAUTH_SECRET,
 };

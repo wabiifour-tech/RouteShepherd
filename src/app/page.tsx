@@ -12,13 +12,14 @@ import DriverLoginPage from '@/components/auth/DriverLoginPage';
 import AuthGuard from '@/components/auth/AuthGuard';
 import PWAInstallPrompt from '@/components/PWAInstallPrompt';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 
 export default function Home() {
   const { currentView, user, isAuthenticated, setUser, setCurrentView } = useAppStore();
   const { data: session, status } = useSession();
   const [initialized, setInitialized] = useState(false);
+  const redirectHandled = useRef(false);
 
   // Initialize auth state from NextAuth session (server-side source of truth)
   useEffect(() => {
@@ -36,30 +37,20 @@ export default function Home() {
       setUser(userData);
       localStorage.setItem('rs_user', JSON.stringify(userData));
 
-      // Auto-redirect ANY authenticated user to their dashboard
-      // This handles both fresh login AND Google OAuth callback
-      if (!isAuthenticated || currentView === 'landing' || currentView === 'passenger-login' || currentView === 'coordinator-login' || currentView === 'driver-login') {
+      // Immediately redirect to the correct dashboard - use ref to prevent double redirect
+      if (!redirectHandled.current) {
+        redirectHandled.current = true;
         if (role === 'passenger') setCurrentView('passenger');
         else if (role === 'coordinator') setCurrentView('coordinator');
         else if (role === 'driver' && !pinChangeRequired) setCurrentView('driver');
+        else if (role === 'driver') setCurrentView('driver'); // Will show PIN change modal
       }
     } else if (!isAuthenticated) {
-      // Try restoring from localStorage when no NextAuth session
-      try {
-        const savedUser = localStorage.getItem('rs_user');
-        if (savedUser) {
-          const parsed = JSON.parse(savedUser);
-          setUser(parsed);
-          if (currentView === 'landing') {
-            if (parsed.role === 'passenger') setCurrentView('passenger');
-            else if (parsed.role === 'coordinator') setCurrentView('coordinator');
-            else if (parsed.role === 'driver' && !parsed.pinChangeRequired) setCurrentView('driver');
-          }
-        }
-      } catch { /* ignore */ }
+      // No session and not authenticated locally - clear any stale data
+      localStorage.removeItem('rs_user');
     }
     setInitialized(true);
-  }, [session, status]);
+  }, [session, status, setUser, setCurrentView, isAuthenticated]);
 
   // Route protection: redirect unauthenticated users to login pages
   useEffect(() => {

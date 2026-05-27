@@ -13,7 +13,7 @@ import { signIn } from 'next-auth/react';
 
 export default function PassengerLoginPage() {
   const { setCurrentView, setUser } = useAppStore();
-  const [mode, setMode] = useState<'choose' | 'signup' | 'signin'>('choose');
+  const [mode, setMode] = useState<'main' | 'signup' | 'signin'>('main');
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
@@ -51,6 +51,7 @@ export default function PassengerLoginPage() {
         throw new Error(data.error || 'Sign up failed');
       }
 
+      // Auto sign in after signup
       const result = await signIn('passenger', {
         email,
         password,
@@ -58,20 +59,31 @@ export default function PassengerLoginPage() {
       });
 
       if (result?.error) {
-        console.warn('Session creation failed after signup:', result.error);
+        // Even if session creation fails, we have the user data from signup
+        console.warn('Session creation after signup:', result.error);
       }
 
+      // Fetch full user data from /api/auth/me
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      let userData: any = null;
+      try {
+        const meRes = await fetch('/api/auth/me');
+        const meData = await meRes.json();
+        if (meData.authenticated && meData.user) {
+          userData = meData.user;
+        }
+      } catch { /* ignore */ }
+
       const userToSet = {
-        id: data.id || '',
-        email: data.email || email,
-        name: data.name || name,
-        image: null as string | null,
+        id: userData?.id || data.id || '',
+        email: userData?.email || data.email || email,
+        name: userData?.name || data.name || name,
+        image: userData?.image || null,
         role: 'passenger' as const,
-        phone: phone || null,
-        provider: 'credentials',
+        phone: userData?.phone || phone || null,
+        provider: userData?.provider || 'credentials',
       };
       setUser(userToSet);
-      localStorage.setItem('rs_user', JSON.stringify(userToSet));
       toast.success('Account created successfully! Welcome aboard.');
       setCurrentView('passenger');
     } catch (err) {
@@ -107,30 +119,27 @@ export default function PassengerLoginPage() {
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let userData: any = null;
+      // Fetch full user data from /api/auth/me
+      let userData: Record<string, unknown> | null = null;
       try {
         const meRes = await fetch('/api/auth/me');
         const meData = await meRes.json();
         if (meData.authenticated && meData.user) {
           userData = meData.user;
         }
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore */ }
 
       if (userData) {
         const userToSet = {
-          id: userData.id || '',
-          email: userData.email || email,
-          name: userData.name || null,
-          image: userData.image || null,
+          id: (userData.id as string) || '',
+          email: (userData.email as string) || email,
+          name: (userData.name as string) || null,
+          image: (userData.image as string) || null,
           role: 'passenger' as const,
-          phone: userData.phone || null,
-          provider: userData.provider || 'credentials',
+          phone: (userData.phone as string) || null,
+          provider: (userData.provider as string) || 'credentials',
         };
         setUser(userToSet);
-        localStorage.setItem('rs_user', JSON.stringify(userToSet));
       } else {
         const userToSet = {
           id: '',
@@ -142,7 +151,6 @@ export default function PassengerLoginPage() {
           provider: 'credentials',
         };
         setUser(userToSet);
-        localStorage.setItem('rs_user', JSON.stringify(userToSet));
       }
 
       toast.success('Welcome back!');
@@ -156,9 +164,50 @@ export default function PassengerLoginPage() {
     }
   };
 
-  const handleGoogleSignIn = () => {
-    const callbackUrl = encodeURIComponent(window.location.origin);
-    window.location.href = `/api/auth/signin/google?callbackUrl=${callbackUrl}`;
+  const handleGoogleSignIn = async () => {
+    try {
+      // Use next-auth signIn with redirect: false for better control
+      const result = await signIn('google', {
+        redirect: false,
+        callbackUrl: window.location.origin,
+      });
+
+      if (result?.error) {
+        setError('Google sign-in failed. Please try again.');
+        toast.error('Google sign-in failed. Please try again.');
+        return;
+      }
+
+      // If no error, the session will be established
+      // The page.tsx useEffect will detect the session and redirect to dashboard
+      if (result?.ok) {
+        // Fetch user data to determine redirect
+        try {
+          const meRes = await fetch('/api/auth/me');
+          const meData = await meRes.json();
+          if (meData.authenticated && meData.user) {
+            const userData = meData.user;
+            setUser({
+              id: userData.id || '',
+              email: userData.email || '',
+              name: userData.name || null,
+              image: userData.image || null,
+              role: userData.role || 'passenger',
+              phone: userData.phone || null,
+              provider: userData.provider || 'google',
+            });
+            toast.success('Welcome!');
+            setCurrentView('passenger');
+          }
+        } catch {
+          // Session may take a moment to propagate - page.tsx effect will handle it
+          toast.success('Signed in with Google!');
+        }
+      }
+    } catch {
+      setError('Google sign-in failed. Please try again.');
+      toast.error('Google sign-in failed. Please try again.');
+    }
   };
 
   return (
@@ -183,20 +232,21 @@ export default function PassengerLoginPage() {
             </div>
           </div>
           <h1 className="text-2xl font-bold">
-            Passenger <span className="text-[#1B5E20]">Login</span>
+            Pre-Register <span className="text-[#1B5E20]">Your Trip</span>
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Sign in to pre-register your trip and track buses
+            Sign in to track buses and pre-register your trip
           </p>
         </div>
 
-        {mode === 'choose' && (
+        {mode === 'main' && (
           <Card className="shadow-xl">
             <CardContent className="p-6 space-y-4">
               <Button
                 className="w-full bg-white text-gray-800 hover:bg-gray-100 border border-gray-300 h-12"
                 onClick={handleGoogleSignIn}
                 type="button"
+                disabled={submitting}
               >
                 <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
@@ -204,7 +254,7 @@ export default function PassengerLoginPage() {
                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
                 </svg>
-                Sign In with Google
+                Continue with Google
               </Button>
 
               <div className="relative my-4">
@@ -212,28 +262,28 @@ export default function PassengerLoginPage() {
                   <span className="w-full border-t" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-card px-2 text-muted-foreground">or continue with email</span>
+                  <span className="bg-card px-2 text-muted-foreground">or use email</span>
                 </div>
               </div>
 
               <Button
                 variant="outline"
                 className="w-full h-12 border-[#1B5E20] text-[#1B5E20] hover:bg-[#1B5E20] hover:text-white"
-                onClick={() => { setMode('signup'); setError(''); }}
-                type="button"
-              >
-                <Mail className="mr-2 h-4 w-4" />
-                Create Account
-              </Button>
-
-              <Button
-                variant="outline"
-                className="w-full h-12"
                 onClick={() => { setMode('signin'); setError(''); }}
                 type="button"
               >
                 <Lock className="mr-2 h-4 w-4" />
                 Sign In with Email
+              </Button>
+
+              <Button
+                variant="outline"
+                className="w-full h-12"
+                onClick={() => { setMode('signup'); setError(''); }}
+                type="button"
+              >
+                <Mail className="mr-2 h-4 w-4" />
+                Create Account
               </Button>
             </CardContent>
           </Card>
@@ -322,11 +372,11 @@ export default function PassengerLoginPage() {
                 {submitting ? 'Creating Account...' : 'Create Account'}
               </Button>
               <button
-                onClick={() => { setMode('choose'); setError(''); }}
+                onClick={() => { setMode('main'); setError(''); }}
                 className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors text-center"
                 type="button"
               >
-                ← Back to sign in options
+                Back to sign in options
               </button>
             </CardContent>
           </Card>
@@ -384,11 +434,11 @@ export default function PassengerLoginPage() {
                 {submitting ? 'Signing In...' : 'Sign In'}
               </Button>
               <button
-                onClick={() => { setMode('choose'); setError(''); }}
+                onClick={() => { setMode('main'); setError(''); }}
                 className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors text-center"
                 type="button"
               >
-                ← Back to sign in options
+                Back to sign in options
               </button>
             </CardContent>
           </Card>

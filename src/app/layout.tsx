@@ -77,7 +77,7 @@ export const metadata: Metadata = {
     siteName: "RouteShepherd",
     images: [
       {
-        url: "/logo-premium.png",
+        url: "/logo-3d-premium.png",
         width: 1200,
         height: 630,
         alt: "RouteShepherd - Intelligent Transit Coordination",
@@ -91,7 +91,7 @@ export const metadata: Metadata = {
     title: "RouteShepherd - Intelligent Transit Coordination",
     description:
       "AI-powered transit coordination for Redemption City events.",
-    images: ["/logo-premium.png"],
+    images: ["/logo-3d-premium.png"],
   },
 };
 
